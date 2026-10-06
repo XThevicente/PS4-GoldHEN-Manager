@@ -8,7 +8,11 @@ on:
       - 'ps4_manager.py'
       - 'requirements.txt'
       - 'assets/**'
+      - 'RELEASE_NOTES.md'
       - '.github/workflows/build-windows.yml'
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -31,13 +35,25 @@ jobs:
       - name: Build EXE
         run: >-
           pyinstaller --noconfirm --clean --onefile --windowed
-          --name PS4_GoldHEN_Manager
+          --name PS4_GoldHEN_Manager_v1.0.0
           --icon assets/ps4_goldhen_manager.ico
           --add-data "assets/ps4_goldhen_manager.ico;assets"
           ps4_manager.py
 
-      - name: Upload EXE
+      - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: PS4_GoldHEN_Manager_v1.0.0_Windows
-          path: dist/PS4_GoldHEN_Manager.exe
+          path: dist/PS4_GoldHEN_Manager_v1.0.0.exe
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v1.0.0 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload v1.0.0 "dist/PS4_GoldHEN_Manager_v1.0.0.exe" --clobber
+          } else {
+            gh release create v1.0.0 "dist/PS4_GoldHEN_Manager_v1.0.0.exe" --title "PS4 GoldHEN Manager v1.0.0" --notes-file RELEASE_NOTES.md --target "${{ github.sha }}"
+          }
