@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'bootstrap/trigger.txt'
+      - 'bootstrap/trigger2.txt'
   workflow_dispatch:
 
 permissions:
@@ -29,9 +29,16 @@ jobs:
               "bootstrap/src_02.txt",
               "bootstrap/src_03.txt",
               "bootstrap/src_04.txt",
-              "bootstrap/src_05a.txt",
-              "bootstrap/src_05b.txt",
-              "bootstrap/src_06.txt",
+              "bootstrap/g05_0.txt",
+              "bootstrap/g05_1.txt",
+              "bootstrap/tail_00.txt",
+              "bootstrap/tail_01.txt",
+              "bootstrap/tail_02.txt",
+              "bootstrap/tail_03.txt",
+              "bootstrap/tail_04.txt",
+              "bootstrap/tail_05.txt",
+              "bootstrap/tail_06.txt",
+              "bootstrap/tail_07.txt",
           ]
           payload = "".join(Path(p).read_text().strip() for p in chunks)
           source = gzip.decompress(base64.b64decode(payload))
