@@ -1,0 +1,55 @@
+name: Bootstrap public source
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bootstrap/trigger.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source and icon
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip
+          chunks = [
+              "bootstrap/src_00.txt",
+              "bootstrap/src_01.txt",
+              "bootstrap/src_02.txt",
+              "bootstrap/src_03.txt",
+              "bootstrap/src_04.txt",
+              "bootstrap/src_05a.txt",
+              "bootstrap/src_05b.txt",
+              "bootstrap/src_06.txt",
+          ]
+          payload = "".join(Path(p).read_text().strip() for p in chunks)
+          source = gzip.decompress(base64.b64decode(payload))
+          Path("ps4_manager.py").write_bytes(source)
+          Path("assets").mkdir(exist_ok=True)
+          Path("assets/ps4_goldhen_manager.ico").write_bytes(
+              base64.b64decode(Path("bootstrap/icon.txt").read_text().strip())
+          )
+          PY
+          python -m py_compile ps4_manager.py
+
+      - name: Commit public source
+        shell: bash
+        run: |
+          rm -rf bootstrap
+          rm -f .github/workflows/bootstrap-public.yml
+          git config user.name "XThevicente"
+          git config user.email "134200650+XThevicente@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish PS4 GoldHEN Manager v1.0.0 source"
+          git push
