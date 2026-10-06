@@ -1,0 +1,4 @@
+# Runtime: Pillow is used for vertical cover art (JPEG/PNG/WebP).
+Pillow>=10.0
+# Build:
+pyinstaller>=6.0
