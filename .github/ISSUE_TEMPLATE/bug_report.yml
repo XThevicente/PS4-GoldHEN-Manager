@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a reproducible problem in PS4 GoldHEN Manager
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing PS4 GoldHEN Manager. Please include enough detail for us to reproduce the issue.
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+      placeholder: "e.g. v1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: PS4 firmware
+      placeholder: "e.g. 13.52"
+    validations:
+      required: true
+  - type: input
+    id: goldhen
+    attributes:
+      label: GoldHEN version
+      placeholder: "e.g. 2.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Connection / Discovery
+        - FTP / Files
+        - PKG Installer / RPI
+        - Payload Server
+        - Klog
+        - ps4debug-NG
+        - Library / PS4 info
+        - Cheats & Mods
+        - Windows build / EXE
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open...
+        2. Click...
+        3. Error appears...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error / traceback / logs
+      render: shell
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Checklist
+      options:
+        - label: I have removed passwords, private credentials and copyrighted/commercial PKG content from attachments.
+          required: true
