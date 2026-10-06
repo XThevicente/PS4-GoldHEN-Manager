@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'bootstrap/trigger2.txt'
+      - 'bootstrap/trigger3.txt'
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,10 @@ jobs:
               "bootstrap/src_01.txt",
               "bootstrap/src_02.txt",
               "bootstrap/src_03.txt",
-              "bootstrap/src_04.txt",
+              "bootstrap/g04_0.txt",
+              "bootstrap/g04_1.txt",
+              "bootstrap/g04_2.txt",
+              "bootstrap/g04_3.txt",
               "bootstrap/g05_0.txt",
               "bootstrap/g05_1.txt",
               "bootstrap/tail_00.txt",
