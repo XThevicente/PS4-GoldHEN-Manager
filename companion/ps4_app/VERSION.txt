@@ -1,0 +1,3 @@
+PS4 GoldHEN Companion v0.4.0
+Protocol: ps4gh-companion/1
+Messages + console info + HTTP reconnect + small file receive + local DS4 menu
