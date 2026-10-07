@@ -4,6 +4,7 @@ Corrige el error de configuracion que permitia seleccionar una ROM, una DLL o un
 
 - El selector de Windows muestra EXE y la configuracion explica la diferencia entre juego y emulador.
 - Se valida extension y cabecera PE, se rechazan DLL, EXE truncado y ROM renombrada, y se vuelve a validar al lanzar perfiles guardados de v0.5.
+- Los perfiles guardados que apuntan a archivos incorrectos se muestran como Revisar EXE en lugar de Configurado.
 - Los errores Windows 193 y 216 indican que debes seleccionar un EXE compatible y comprobar que abre directamente.
 - La validacion comprueba formato basico; no garantiza arquitectura, dependencias ni compatibilidad con una ROM. Windows realiza la comprobacion final al ejecutar.
 - PS4 conserva los caracteres de las palabras con tildes mediante transliteracion y dibuja parentesis, corchetes y otros signos habituales.

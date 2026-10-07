@@ -1,3 +1,3 @@
-PS4 GoldHEN Companion v0.4.0
-Protocol: ps4gh-companion/1
-Messages + console info + HTTP reconnect + small file receive + local DS4 menu
+PS4 GoldHEN Companion v0.5.1
+Package APP_VER 0.51
+Retro Manager: emulator EXE validation, readable PS4 error text and punctuation.

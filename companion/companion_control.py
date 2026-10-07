@@ -201,11 +201,11 @@ class CompanionControl(tk.Tk):
         system = self.retro_filter.get()
         with retro.lock:
             entries = list(retro.entries)
-            configured = set(retro.config["emulators"])
+            configured = retro.configuration_states()
         for entry in entries:
             if system != "todos" and system != entry["system"]: continue
             if query not in entry["title"].casefold(): continue
-            self.roms.insert("", "end", iid=entry["id"], values=(SYSTEMS[entry["system"]][0], entry["title"], "Configurado" if entry["system"] in configured else "Sin configurar"))
+            self.roms.insert("", "end", iid=entry["id"], values=(SYSTEMS[entry["system"]][0], entry["title"], configured[entry["system"]]))
 
     def retro_cover(self, event=None):
         self.cover_label.configure(image="", text="Sin carátula")

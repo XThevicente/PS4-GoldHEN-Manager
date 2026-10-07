@@ -140,11 +140,28 @@ class RetroManager:
         if system and system not in SYSTEMS:
             raise ValueError("Sistema desconocido")
         with self.lock:
+            states = self.configuration_states()
             entries = [e for e in self.entries if not system or e["system"] == system]
             selected = entries[max(0, offset):max(0, offset) + min(6, max(1, limit))]
             items = [{"rom_id": e["id"], "title": e["title"], "system": e["system"],
-                      "configured": e["system"] in self.config["emulators"]} for e in selected]
+                      "configured": states[e["system"]] == "Configurado"} for e in selected]
             return {"ok": True, "total": len(entries), "offset": max(0, offset), "items": items}
+
+    def configuration_states(self):
+        with self.lock:
+            profiles = dict(self.config["emulators"])
+        result = {}
+        for system in SYSTEMS:
+            profile = profiles.get(system)
+            if not profile:
+                result[system] = "Sin configurar"
+                continue
+            try:
+                validate_emulator(profile["executable"])
+                result[system] = "Configurado"
+            except (ValueError, OSError, KeyError, TypeError):
+                result[system] = "Revisar EXE"
+        return result
 
     def status(self):
         with self.lock:

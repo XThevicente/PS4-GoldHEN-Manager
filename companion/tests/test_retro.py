@@ -116,6 +116,8 @@ class RetroTests(unittest.TestCase):
     def test_legacy_profile_is_validated_before_launch(self):
         entry = self.retro.entries[0]
         self.retro.config["emulators"]["nes"] = {"executable": entry["path"], "arguments": ["{rom}"]}
+        self.assertEqual(self.retro.configuration_states()["nes"], "Revisar EXE")
+        self.assertFalse(self.retro.page()["items"][0]["configured"])
         with patch("retro_manager.subprocess.Popen") as spawn:
             with self.assertRaisesRegex(ValueError, "Has seleccionado un juego"):
                 self.retro.launch(entry["id"], "bad-profile")
