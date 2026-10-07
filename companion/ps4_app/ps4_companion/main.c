@@ -11,11 +11,13 @@
 #include <orbis/Ssl.h>
 #include <orbis/Net.h>
 #include <orbis/Sysmodule.h>
+#include <orbis/UserService.h>
+#include <orbis/Pad.h>
 
-#define APP_VERSION "0.2.1"
+#define APP_VERSION "0.3.0"
 #define HTTP_SUCCESS 1
 #define HTTP_FAILED 0
-#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.2.1"
+#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.3.0"
 #define NET_POOLSIZE (4 * 1024)
 #define DISCOVERY_PORT 8786
 #define HTTP_PORT 8787
@@ -53,7 +55,9 @@ static off_t directMemOff = 0;
 static size_t directMemSize = 0;
 static void *videoMem = NULL;
 
-static const char FONT_CHARS[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:/_?";
+static int padHandle = -1;
+
+static const char FONT_CHARS[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./:_?";
 static const uint8_t FONT[][7] = {
     {0,0,0,0,0,0,0},
     {14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},
@@ -86,12 +90,8 @@ static void trace_marker(const char *marker) {
     }
 }
 
-static void put_pixel(int x, int y, uint32_t c) {
-    if (x < 0 || y < 0 || x >= FB_W || y >= FB_H || !frameBuffers[activeFb]) return;
-    ((uint32_t *)frameBuffers[activeFb])[y * FB_W + x] = c;
-}
-
 static void fill_rect(int x, int y, int w, int h, uint32_t c) {
+    if (!frameBuffers[activeFb]) return;
     int x2 = x + w, y2 = y + h;
     if (x < 0) x = 0;
     if (y < 0) y = 0;
@@ -177,49 +177,150 @@ static int video_init(void) {
     return 1;
 }
 
-static void ui_screen(const char *status, const char *detail, int good) {
+static void draw_base(void) {
     const uint32_t bg = rgb(5, 16, 34);
     const uint32_t panel = rgb(11, 31, 59);
     const uint32_t blue = rgb(38, 181, 255);
     const uint32_t gold = rgb(245, 185, 52);
+    const uint32_t muted = rgb(141, 164, 190);
+
+    fill_rect(0, 0, FB_W, FB_H, bg);
+    fill_rect(0, 0, FB_W, 18, blue);
+    fill_rect(105, 120, 1710, 830, panel);
+    draw_text(160, 175, "PS4 GOLDHEN", 6, blue);
+    draw_text(160, 235, "COMPANION", 6, gold);
+    draw_text(160, 320, "V0.3", 4, muted);
+    draw_text(160, 810, "PS4 TO PC  LAN ONLY", 3, muted);
+    draw_text(160, 860, "UDP 8786   HTTP 8787", 3, muted);
+}
+
+static void draw_status_frame(const char *status, const char *detail, int good) {
     const uint32_t white = rgb(236, 245, 255);
     const uint32_t muted = rgb(141, 164, 190);
     const uint32_t ok = rgb(60, 210, 120);
     const uint32_t bad = rgb(255, 92, 92);
 
-    fill_rect(0, 0, FB_W, FB_H, bg);
-    fill_rect(0, 0, FB_W, 18, blue);
-    fill_rect(105, 120, 1710, 830, panel);
-
-    draw_text(160, 175, "PS4 GOLDHEN", 6, blue);
-    draw_text(160, 235, "COMPANION", 6, gold);
-    draw_text(160, 320, "V0.2", 4, muted);
-
-    fill_rect(160, 410, 28, 28, good ? ok : bad);
-    draw_text(215, 402, status ? status : "INICIALIZANDO", 5, white);
-
-    if (detail && detail[0]) {
-        draw_text(215, 490, detail, 4, muted);
-    }
-
-    draw_text(160, 810, "PS4 <-> PC  LAN ONLY", 3, muted);
-    draw_text(160, 860, "UDP 8786   HTTP 8787", 3, muted);
-
-    present();
-
-    /* Keep both buffers visually in sync, so a later flip never reveals old/black content. */
-    fill_rect(0, 0, FB_W, FB_H, bg);
-    fill_rect(0, 0, FB_W, 18, blue);
-    fill_rect(105, 120, 1710, 830, panel);
-    draw_text(160, 175, "PS4 GOLDHEN", 6, blue);
-    draw_text(160, 235, "COMPANION", 6, gold);
-    draw_text(160, 320, "V0.2", 4, muted);
+    draw_base();
     fill_rect(160, 410, 28, 28, good ? ok : bad);
     draw_text(215, 402, status ? status : "INICIALIZANDO", 5, white);
     if (detail && detail[0]) draw_text(215, 490, detail, 4, muted);
-    draw_text(160, 810, "PS4 <-> PC  LAN ONLY", 3, muted);
-    draw_text(160, 860, "UDP 8786   HTTP 8787", 3, muted);
-    present();
+}
+
+static void ui_screen(const char *status, const char *detail, int good) {
+    for (int i = 0; i < 2; ++i) {
+        draw_status_frame(status, detail, good);
+        present();
+    }
+}
+
+static void draw_pair_frame(const char code[7], int selected) {
+    const uint32_t white = rgb(236, 245, 255);
+    const uint32_t muted = rgb(141, 164, 190);
+    const uint32_t blue = rgb(38, 181, 255);
+    const uint32_t gold = rgb(245, 185, 52);
+    const uint32_t dark = rgb(5, 16, 34);
+
+    draw_base();
+    draw_text(160, 400, "EMPAREJAR CON PC", 5, white);
+    draw_text(160, 475, "INTRODUCE EL CODIGO DEL PC", 3, muted);
+
+    int startX = 250;
+    int y = 565;
+    for (int i = 0; i < 6; ++i) {
+        int x = startX + i * 120;
+        if (i == selected) {
+            fill_rect(x - 15, y - 15, 85, 110, gold);
+            draw_char(x, y, code[i], 8, dark);
+        } else {
+            fill_rect(x - 15, y - 15, 85, 110, blue);
+            draw_char(x, y, code[i], 8, white);
+        }
+    }
+
+    draw_text(160, 715, "D-PAD CAMBIA Y MUEVE   X ACEPTA", 3, muted);
+}
+
+static void ui_pair_code(const char code[7], int selected) {
+    for (int i = 0; i < 2; ++i) {
+        draw_pair_frame(code, selected);
+        present();
+    }
+}
+
+static int pad_init(void) {
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_USER_SERVICE);
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_PAD);
+
+    if (scePadInit() != 0) return 0;
+
+    OrbisUserServiceInitializeParams param;
+    memset(&param, 0, sizeof(param));
+    param.priority = ORBIS_KERNEL_PRIO_FIFO_LOWEST;
+    sceUserServiceInitialize(&param);
+
+    int userId = -1;
+    if (sceUserServiceGetInitialUser(&userId) != 0) return 0;
+
+    padHandle = scePadOpen(userId, ORBIS_PAD_PORT_TYPE_STANDARD, 0, NULL);
+    return padHandle >= 0;
+}
+
+static int input_pair_code(char out[7]) {
+    if (padHandle < 0) return 0;
+
+    strcpy(out, "000000");
+    int selected = 0;
+    uint32_t prev = 0;
+    ui_pair_code(out, selected);
+
+    for (;;) {
+        OrbisPadData data;
+        memset(&data, 0, sizeof(data));
+        if (scePadReadState(padHandle, &data) < 0) {
+            sceKernelUsleep(30000);
+            continue;
+        }
+
+        uint32_t now = data.buttons;
+        uint32_t pressed = now & ~prev;
+        prev = now;
+        int changed = 0;
+
+        if (pressed & ORBIS_PAD_BUTTON_LEFT) {
+            selected = (selected + 5) % 6;
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_RIGHT) {
+            selected = (selected + 1) % 6;
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_UP) {
+            out[selected] = (out[selected] == '9') ? '0' : (char)(out[selected] + 1);
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_DOWN) {
+            out[selected] = (out[selected] == '0') ? '9' : (char)(out[selected] - 1);
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_CROSS) {
+            return 1;
+        }
+
+        if (changed) ui_pair_code(out, selected);
+        sceKernelUsleep(30000);
+    }
+}
+
+static void pad_feedback(void) {
+    if (padHandle < 0) return;
+    OrbisPadVibeParam vibe;
+    vibe.lgMotor = 120;
+    vibe.smMotor = 80;
+    scePadSetVibration(padHandle, &vibe);
+    sceKernelUsleep(120000);
+    vibe.lgMotor = 0;
+    vibe.smMotor = 0;
+    scePadSetVibration(padHandle, &vibe);
 }
 
 static int net_http_init(void) {
@@ -328,8 +429,7 @@ static int http_get_text(const char *url, const char *token, char *out, size_t o
         sceHttpAddRequestHeader(req, "Authorization", auth, 0);
     }
 
-    ret = sceHttpSetConnectTimeOut(req, 3000000);
-    (void)ret;
+    sceHttpSetConnectTimeOut(req, 3000000);
     sceHttpSetRecvTimeOut(req, 3000000);
 
     ret = sceHttpSendRequest(req, NULL, 0);
@@ -374,6 +474,16 @@ static int json_extract_string(const char *json, const char *key, char *out, siz
     return 1;
 }
 
+static int json_extract_int(const char *json, const char *key, int *out) {
+    char needle[64];
+    snprintf(needle, sizeof(needle), "\"%s\":", key);
+    const char *p = strstr(json, needle);
+    if (!p) return 0;
+    p += strlen(needle);
+    *out = atoi(p);
+    return 1;
+}
+
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -394,24 +504,24 @@ int main(void) {
     }
 
     trace_marker("NET_03 OK");
+    int padOk = pad_init();
+    trace_marker(padOk ? "PAD_04 OK" : "PAD_04 FAIL");
+
     ui_screen("BUSCANDO PC", "INICIA COMPANION SERVER EN WINDOWS", 1);
 
     char pc_ip[64] = {0};
     int pc_port = HTTP_PORT;
-
     if (read_text_file(PC_IP_FILE, pc_ip, sizeof(pc_ip))) {
-        trace_marker("DISCOVERY_04 MANUAL IP");
-        char manual_detail[256];
-        snprintf(manual_detail, sizeof(manual_detail), "IP MANUAL %s:%d", pc_ip, pc_port);
-        ui_screen("PC CONFIGURADO", manual_detail, 1);
+        trace_marker("DISCOVERY_05 MANUAL IP");
     } else if (!discover_pc(pc_ip, sizeof(pc_ip), &pc_port)) {
-        trace_marker("DISCOVERY_04 FAIL");
-        ui_screen("PC NO ENCONTRADO", "REVISA FIREWALL O CREA /DATA/PS4GH_PC_IP.TXT", 0);
+        trace_marker("DISCOVERY_05 FAIL");
+        ui_screen("PC NO ENCONTRADO", "REVISA FIREWALL O CREA PC_IP.TXT", 0);
         net_http_end();
         for (;;) {}
     } else {
-        trace_marker("DISCOVERY_04 OK");
+        trace_marker("DISCOVERY_05 OK");
     }
+
     char detail[256];
     snprintf(detail, sizeof(detail), "PC %s:%d", pc_ip, pc_port);
     ui_screen("PC ENCONTRADO", detail, 1);
@@ -424,22 +534,31 @@ int main(void) {
     int status = 0;
     snprintf(url, sizeof(url), "%s/api/v1/ping", base);
     if (!http_get_text(url, NULL, response, sizeof(response), &status) || status != 200) {
-        trace_marker("PING_05 FAIL");
+        trace_marker("PING_06 FAIL");
         snprintf(detail, sizeof(detail), "HTTP %d", status);
         ui_screen("FALLO PING", detail, 0);
         net_http_end();
         for (;;) {}
     }
 
-    trace_marker("PING_05 OK");
+    trace_marker("PING_06 OK");
     write_text_file(RESULT_FILE, response);
 
     char token[256] = {0};
     if (!read_text_file(TOKEN_FILE, token, sizeof(token))) {
-        trace_marker("PAIR_06 NEED CODE");
+        trace_marker("PAIR_07 NEED CODE");
         char pair_code[32] = {0};
-        if (!read_text_file(PAIR_FILE, pair_code, sizeof(pair_code))) {
-            ui_screen("SIN EMPAREJAR", "CREA /DATA/PS4GH_PAIR_CODE.TXT", 0);
+
+        if (padOk) {
+            char code6[7];
+            if (!input_pair_code(code6)) {
+                ui_screen("FALLO MANDO", "NO SE PUDO LEER EL CODIGO", 0);
+                net_http_end();
+                for (;;) {}
+            }
+            strncpy(pair_code, code6, sizeof(pair_code) - 1);
+        } else if (!read_text_file(PAIR_FILE, pair_code, sizeof(pair_code))) {
+            ui_screen("SIN EMPAREJAR", "Mando no disponible. Usa pair_code.txt", 0);
             net_http_end();
             for (;;) {}
         }
@@ -448,7 +567,7 @@ int main(void) {
         snprintf(url, sizeof(url), "%s/api/v1/pair?code=%s&device=PS4", base, pair_code);
         if (!http_get_text(url, NULL, response, sizeof(response), &status) || status != 200 ||
             !json_extract_string(response, "token", token, sizeof(token))) {
-            trace_marker("PAIR_06 FAIL");
+            trace_marker("PAIR_07 FAIL");
             snprintf(detail, sizeof(detail), "HTTP %d  REVISA EL CODIGO", status);
             ui_screen("FALLO EMPAREJADO", detail, 0);
             net_http_end();
@@ -456,26 +575,63 @@ int main(void) {
         }
 
         write_text_file(TOKEN_FILE, token);
-        trace_marker("PAIR_06 OK TOKEN SAVED");
+        trace_marker("PAIR_07 OK TOKEN SAVED");
+        pad_feedback();
     } else {
-        trace_marker("PAIR_06 TOKEN FOUND");
+        trace_marker("PAIR_07 TOKEN FOUND");
     }
 
-    ui_screen("TOKEN OK", "COMPROBANDO SESION AUTENTICADA", 1);
+    snprintf(detail, sizeof(detail), "PC %s:%d  TOKEN OK", pc_ip, pc_port);
+    ui_screen("CONECTADO", detail, 1);
+    trace_marker("HEARTBEAT_08 START");
 
-    snprintf(url, sizeof(url), "%s/api/v1/status", base);
-    if (http_get_text(url, token, response, sizeof(response), &status) && status == 200) {
-        trace_marker("STATUS_07 CONNECTED");
-        write_text_file(RESULT_FILE, response);
-        snprintf(detail, sizeof(detail), "PC %s:%d  TOKEN OK", pc_ip, pc_port);
-        ui_screen("CONECTADO", detail, 1);
-    } else {
-        trace_marker("STATUS_07 FAIL");
-        snprintf(detail, sizeof(detail), "HTTP %d  BORRA TOKEN Y EMPAREJA", status);
-        ui_screen("TOKEN NO VALIDO", detail, 0);
+    int failures = 0;
+    int lastCommandId = 0;
+
+    for (;;) {
+        snprintf(url, sizeof(url), "%s/api/v1/poll", base);
+        status = 0;
+        if (http_get_text(url, token, response, sizeof(response), &status) && status == 200) {
+            failures = 0;
+            write_text_file(RESULT_FILE, response);
+
+            char cmdName[64] = {0};
+            int cmdId = 0;
+            if (json_extract_string(response, "name", cmdName, sizeof(cmdName)) &&
+                json_extract_int(response, "id", &cmdId) &&
+                cmdId > 0 && cmdId != lastCommandId) {
+
+                lastCommandId = cmdId;
+                if (strcmp(cmdName, "ping") == 0) {
+                    trace_marker("COMMAND_09 PING");
+                    ui_screen("COMANDO RECIBIDO", "PING DESDE EL PC", 1);
+                    pad_feedback();
+                } else {
+                    trace_marker("COMMAND_09 UNKNOWN");
+                    ui_screen("COMANDO RECIBIDO", cmdName, 1);
+                }
+
+                snprintf(url, sizeof(url), "%s/api/v1/ack?id=%d&result=ok", base, cmdId);
+                int ackStatus = 0;
+                http_get_text(url, token, response, sizeof(response), &ackStatus);
+                sceKernelUsleep(900000);
+            }
+
+            snprintf(detail, sizeof(detail), "PC %s:%d  HEARTBEAT OK", pc_ip, pc_port);
+            ui_screen("CONECTADO", detail, 1);
+        } else {
+            failures++;
+            if (status == 401) {
+                trace_marker("HEARTBEAT_08 UNAUTHORIZED");
+                ui_screen("TOKEN NO VALIDO", "BORRA TOKEN Y EMPAREJA DE NUEVO", 0);
+                for (;;) {}
+            }
+            if (failures >= 2) {
+                trace_marker("HEARTBEAT_08 LOST");
+                ui_screen("PC DESCONECTADO", "REINTENTANDO HTTP 8787", 0);
+            }
+        }
+
+        sceKernelUsleep(2000000);
     }
-
-    net_http_end();
-    trace_marker("DONE_08");
-    for (;;) {}
 }
