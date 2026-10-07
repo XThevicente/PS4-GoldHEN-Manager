@@ -1,5 +1,5 @@
 TITLE := PS4 GoldHEN Companion
-VERSION := 0.40
+VERSION := 0.50
 TITLE_ID := BREW00152
 CONTENT_ID := IV0000-BREW00152_00-GOLDHENCOMPANION
 
@@ -58,3 +58,4 @@ $(INTDIR)/%.o: $(PROJDIR)/%.c
 
 clean:
 	rm -f $(CONTENT_ID).pkg pkg.gp4 sce_sys/param.sfo eboot.bin $(INTDIR)/*.elf $(INTDIR)/*.oelf $(OBJS)
+

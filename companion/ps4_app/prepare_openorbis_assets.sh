@@ -8,3 +8,4 @@ cp "$SAMPLE/sce_sys/icon0.png" sce_sys/icon0.png
 cp "$SAMPLE/sce_module/libSceFios2.prx" sce_module/libSceFios2.prx
 cp "$SAMPLE/sce_module/libc.prx" sce_module/libc.prx
 printf 'Prepared package assets from %s\n' "$SAMPLE"
+

@@ -4,10 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feature/ps4-companion-v0.4
+      - feature/ps4-companion-v0.5
     paths:
       - 'companion/companion_control.py'
       - 'companion/companion_server.py'
+      - 'companion/retro_manager.py'
+      - 'companion/tests/**'
       - 'assets/ps4_goldhen_manager.ico'
       - '.github/workflows/build-companion-windows.yml'
 
@@ -29,13 +31,17 @@ jobs:
           python -m py_compile companion/companion_server.py
           python -m py_compile companion/companion_control.py
 
+      - name: Test Retro Manager
+        run: python -m unittest discover -s companion/tests -v
+
       - name: Build Companion EXE
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.4.0 --icon assets/ps4_goldhen_manager.ico --paths companion companion/companion_control.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.5.0 --icon assets/ps4_goldhen_manager.ico --paths companion companion/companion_control.py
 
       - name: Upload Companion EXE
         uses: actions/upload-artifact@v4
         with:
-          name: PS4_GoldHEN_Companion_PC_v0.4.0_Windows
-          path: dist/PS4_GoldHEN_Companion_PC_v0.4.0.exe
+          name: PS4_GoldHEN_Companion_PC_v0.5.0_Windows
+          path: dist/PS4_GoldHEN_Companion_PC_v0.5.0.exe
+

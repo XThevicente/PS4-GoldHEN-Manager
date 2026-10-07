@@ -17,10 +17,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from retro_manager import RetroManager
 
 APP_NAME = "PS4 GoldHEN Manager"
 PROTOCOL = "ps4gh-companion/1"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 HTTP_PORT = 8787
 DISCOVERY_PORT = 8786
 OFFER_MAGIC = "PS4GH_OFFER_V1"
@@ -105,6 +106,7 @@ class CompanionService:
         self._lock = threading.RLock()
         self._files: dict[int, tuple[str, bytes]] = {}
         self._file_seq = 0
+        self.retro = RetroManager(app_data_dir())
 
     def _load_state(self) -> CompanionState:
         try:
@@ -125,6 +127,8 @@ class CompanionService:
 
     def queue_command(self, name: str, **payload) -> dict:
         with self._lock:
+            if self.state.pending_command:
+                raise ValueError("Hay un comando pendiente")
             self.state.command_seq += 1
             cmd = {
                 "id": self.state.command_seq,
@@ -167,7 +171,7 @@ class CompanionService:
         service = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "PS4GHCompanion/0.4.0"
+            server_version = "PS4GHCompanion/0.5.0"
 
             def log_message(self, fmt, *args):
                 print(f"[HTTP] {self.address_string()} - {fmt % args}")
@@ -192,6 +196,29 @@ class CompanionService:
             def do_GET(self):
                 parsed = urlparse(self.path)
                 qs = parse_qs(parsed.query)
+
+                if parsed.path.startswith("/api/v1/retro/"):
+                    if not self._authorized():
+                        return self._json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+                    service._touch()
+                    try:
+                        if parsed.path == "/api/v1/retro/library":
+                            offset = max(0, int((qs.get("offset") or ["0"])[0]))
+                            system = (qs.get("system") or [""])[0]
+                            page = service.retro.page(offset=offset, system=system)
+                            for item in page["items"]:
+                                item["title"] = safe_text(item["title"], 48).replace("{", "(").replace("}", ")")
+                            return self._json(HTTPStatus.OK, page)
+                        if parsed.path == "/api/v1/retro/status":
+                            return self._json(HTTPStatus.OK, service.retro.status())
+                        if parsed.path == "/api/v1/retro/launch":
+                            return self._json(HTTPStatus.OK, service.retro.launch(
+                                (qs.get("id") or [""])[0], (qs.get("request") or [""])[0]))
+                        if parsed.path == "/api/v1/retro/stop":
+                            return self._json(HTTPStatus.OK, service.retro.stop())
+                        return self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
+                    except (ValueError, OSError) as exc:
+                        return self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": safe_text(str(exc), 80)})
 
                 if parsed.path == "/api/v1/ping":
                     with service._lock:
@@ -240,7 +267,7 @@ class CompanionService:
                             "online": True,
                             "capabilities": [
                                 "ping", "pair", "status", "poll", "ack",
-                                "message", "get_info", "reconnect", "fetch_file"
+                                "message", "get_info", "reconnect", "fetch_file", "retro_library", "retro_launch_pc"
                             ],
                         }
                         if parsed.path == "/api/v1/poll":
@@ -306,7 +333,9 @@ class CompanionService:
                 if not self._authorized():
                     return self._json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
                 try:
-                    length = min(int(self.headers.get("Content-Length", "0")), 65536)
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length < 0 or length > 65536:
+                        return self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"ok": False, "error": "body_too_large"})
                     payload = json.loads(self.rfile.read(length) or b"{}")
                 except Exception:
                     return self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid_json"})
@@ -340,7 +369,9 @@ class CompanionService:
         s.close()
 
     def start(self):
+        self._stop.clear()
         self._http = ThreadingHTTPServer((self.host, self.http_port), self._handler())
+        self.http_port = self._http.server_address[1]
         t_http = threading.Thread(target=self._http.serve_forever, name="PS4GH-HTTP", daemon=True)
         t_udp = threading.Thread(target=self._advertise_loop, name="PS4GH-Discovery", daemon=True)
         self._threads = [t_http, t_udp]
@@ -380,3 +411,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

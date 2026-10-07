@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <sys/types.h>
+#include <time.h>
 
 #include <orbis/libkernel.h>
 #include <orbis/VideoOut.h>
@@ -14,10 +15,10 @@
 #include <orbis/UserService.h>
 #include <orbis/Pad.h>
 
-#define APP_VERSION "0.4.0"
+#define APP_VERSION "0.5.0"
 #define HTTP_SUCCESS 1
 #define HTTP_FAILED 0
-#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.4.0"
+#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.5.0"
 #define NET_POOLSIZE (4 * 1024)
 #define DISCOVERY_PORT 8786
 #define HTTP_PORT 8787
@@ -191,7 +192,7 @@ static void draw_base(void) {
     fill_rect(105, 120, 1710, 830, panel);
     draw_text(160, 175, "PS4 GOLDHEN", 6, blue);
     draw_text(160, 235, "COMPANION", 6, gold);
-    draw_text(160, 320, "V0.4", 4, muted);
+    draw_text(160, 320, "V0.5", 4, muted);
     draw_text(160, 810, "OPTIONS MENU   PS4 TO PC  LAN ONLY", 3, muted);
     draw_text(160, 860, "UDP 8786   HTTP 8787", 3, muted);
 }
@@ -250,7 +251,7 @@ static void ui_pair_code(const char code[7], int selected) {
 }
 
 static void draw_menu_frame(int selected) {
-    const char *items[] = {"ESTADO", "INFO CONSOLA", "RECONECTAR HTTP", "VOLVER"};
+    const char *items[] = {"ESTADO", "INFO CONSOLA", "RETRO MANAGER", "RECONECTAR HTTP", "VOLVER"};
     const uint32_t white = rgb(236, 245, 255);
     const uint32_t muted = rgb(141, 164, 190);
     const uint32_t blue = rgb(38, 181, 255);
@@ -259,8 +260,8 @@ static void draw_menu_frame(int selected) {
 
     draw_base();
     draw_text(160, 390, "MENU LOCAL", 5, white);
-    for (int i = 0; i < 4; ++i) {
-        int y = 485 + i * 72;
+    for (int i = 0; i < 5; ++i) {
+        int y = 460 + i * 60;
         if (i == selected) {
             fill_rect(160, y - 10, 620, 55, gold);
             draw_text(180, y, items[i], 4, dark);
@@ -314,6 +315,17 @@ static int pad_init(void) {
     return padHandle >= 0;
 }
 
+static uint32_t pad_navigation(const OrbisPadData *data) {
+    uint32_t buttons = data->buttons;
+    if (data->connected) {
+        if (data->leftStick.x < 64) buttons |= ORBIS_PAD_BUTTON_LEFT;
+        if (data->leftStick.x > 192) buttons |= ORBIS_PAD_BUTTON_RIGHT;
+        if (data->leftStick.y < 64) buttons |= ORBIS_PAD_BUTTON_UP;
+        if (data->leftStick.y > 192) buttons |= ORBIS_PAD_BUTTON_DOWN;
+    }
+    return buttons;
+}
+
 static int input_pair_code(char out[7]) {
     if (padHandle < 0) return 0;
 
@@ -330,7 +342,7 @@ static int input_pair_code(char out[7]) {
             continue;
         }
 
-        uint32_t now = data.buttons;
+        uint32_t now = pad_navigation(&data);
         uint32_t pressed = now & ~prev;
         prev = now;
         int changed = 0;
@@ -370,11 +382,15 @@ static void pad_feedback(void) {
     scePadSetVibration(padHandle, &vibe);
 }
 
+static void retro_loop(const char *pc_ip, int pc_port);
+static void menu_heartbeat(const char *pc_ip, int pc_port);
+
 static int menu_loop(const char *pc_ip, int pc_port) {
     if (padHandle < 0) return 0;
     int selected = 0;
     uint32_t prev = 0;
     ui_menu(selected);
+    unsigned menuTicks = 0;
 
     /* Wait for OPTIONS to be released before accepting menu input. */
     for (int i = 0; i < 12; ++i) {
@@ -392,17 +408,17 @@ static int menu_loop(const char *pc_ip, int pc_port) {
             sceKernelUsleep(30000);
             continue;
         }
-        uint32_t now = data.buttons;
+        uint32_t now = pad_navigation(&data);
         uint32_t pressed = now & ~prev;
         prev = now;
         int changed = 0;
 
         if (pressed & ORBIS_PAD_BUTTON_UP) {
-            selected = (selected + 3) % 4;
+            selected = (selected + 4) % 5;
             changed = 1;
         }
         if (pressed & ORBIS_PAD_BUTTON_DOWN) {
-            selected = (selected + 1) % 4;
+            selected = (selected + 1) % 5;
             changed = 1;
         }
         if (pressed & ORBIS_PAD_BUTTON_CIRCLE) return 0;
@@ -422,12 +438,17 @@ static int menu_loop(const char *pc_ip, int pc_port) {
                 sceKernelUsleep(1400000);
                 ui_menu(selected);
             } else if (selected == 2) {
+                retro_loop(pc_ip, pc_port);
+                ui_menu(selected);
+                prev = ORBIS_PAD_BUTTON_CROSS;
+            } else if (selected == 3) {
                 return 1;
             } else {
                 return 0;
             }
         }
 
+        if (++menuTicks % 60 == 0) menu_heartbeat(pc_ip, pc_port);
         if (changed) ui_menu(selected);
         sceKernelUsleep(30000);
     }
@@ -435,9 +456,9 @@ static int menu_loop(const char *pc_ip, int pc_port) {
 
 static int net_http_init(void) {
     int ret;
-    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET) < 0) return HTTP_FAILED;
-    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_HTTP) < 0) return HTTP_FAILED;
-    if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL) < 0) return HTTP_FAILED;
+    if ((int32_t)sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET) < 0) return HTTP_FAILED;
+    if ((int32_t)sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_HTTP) < 0) return HTTP_FAILED;
+    if ((int32_t)sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL) < 0) return HTTP_FAILED;
 
     if (!netCoreStarted) {
         ret = sceNetInit();
@@ -655,6 +676,128 @@ static int json_extract_int(const char *json, const char *key, int *out) {
     return 1;
 }
 
+static void menu_heartbeat(const char *pc_ip, int pc_port) {
+    char token[256], url[256], response[1024];
+    int status = 0;
+    if (!read_text_file(TOKEN_FILE, token, sizeof(token))) return;
+    snprintf(url, sizeof(url), "http://%s:%d/api/v1/status", pc_ip, pc_port);
+    http_get_text(url, token, response, sizeof(response), &status);
+}
+
+typedef struct { char id[24]; char title[64]; char system[24]; } RetroItem;
+static const char *retroSystems[] = {"", "nes", "snes", "gb", "gbc", "gba", "megadrive", "ps1", "n64", "homebrew"};
+static const char *retroLabels[] = {"TODOS", "NES", "SNES", "GAME BOY", "GAME BOY COLOR", "GAME BOY ADVANCE", "MEGA DRIVE", "PLAYSTATION", "NINTENDO 64", "HOMEBREW"};
+
+static int retro_load(const char *base, const char *token, int system, int offset,
+                      RetroItem items[6], int *total, char *message, size_t cap) {
+    char url[384], response[4096];
+    int status = 0, count = 0;
+    snprintf(url, sizeof(url), "%s/api/v1/retro/library?offset=%d&system=%s", base, offset, retroSystems[system]);
+    if (!http_get_text(url, token, response, sizeof(response), &status) || status != 200) {
+        snprintf(message, cap, "PC NO DISPONIBLE - HTTP %d", status);
+        *total = 0;
+        return 0;
+    }
+    json_extract_int(response, "total", total);
+    const char *cursor = strstr(response, "\"items\":[");
+    while (cursor && count < 6 && (cursor = strchr(cursor, '{')) != NULL) {
+        const char *end = strchr(cursor, '}');
+        if (!end) break;
+        size_t len = (size_t)(end - cursor + 1);
+        if (len >= 512) break;
+        char object[512];
+        memcpy(object, cursor, len); object[len] = 0;
+        memset(&items[count], 0, sizeof(items[count]));
+        if (!json_extract_string(object, "rom_id", items[count].id, sizeof(items[count].id))) break;
+        json_extract_string(object, "title", items[count].title, sizeof(items[count].title));
+        json_extract_string(object, "system", items[count].system, sizeof(items[count].system));
+        count++; cursor = end + 1;
+    }
+    snprintf(message, cap, count ? "X LANZA EN PC - TRIANGULO DETIENE" : "SIN ROMS - CONFIGURA Y ESCANEA EN PC");
+    return count;
+}
+
+static void retro_draw(RetroItem items[6], int count, int total, int offset,
+                       int selected, int system, const char *message) {
+    for (int frame = 0; frame < 2; ++frame) {
+        draw_base();
+        draw_text(160, 385, "RETRO MANAGER", 5, rgb(236,245,255));
+        char label[128];
+        snprintf(label, sizeof(label), "%s  %d ROMS  PAGINA %d", retroLabels[system], total, offset / 6 + 1);
+        draw_text(160, 440, label, 3, rgb(38,181,255));
+        for (int i = 0; i < count; ++i) {
+            int y = 492 + i * 38;
+            if (i == selected) fill_rect(150, y - 5, 1580, 32, rgb(245,185,52));
+            snprintf(label, sizeof(label), "%.16s - %.48s", items[i].system, items[i].title);
+            draw_text(165, y, label, 3, i == selected ? rgb(5,16,34) : rgb(236,245,255));
+        }
+        draw_text(160, 735, message, 3, rgb(141,164,190));
+        fill_rect(150, 795, 1610, 100, rgb(11,31,59));
+        draw_text(160, 810, "IZQ/DER SISTEMA - ARRIBA/ABAJO JUEGO", 3, rgb(141,164,190));
+        draw_text(160, 850, "O VOLVER - CUADRADO RECARGA - VIDEO EN PC", 3, rgb(141,164,190));
+        present();
+    }
+}
+
+static void retro_loop(const char *pc_ip, int pc_port) {
+    char token[256], base[128], message[128];
+    if (!read_text_file(TOKEN_FILE, token, sizeof(token))) return;
+    snprintf(base, sizeof(base), "http://%s:%d", pc_ip, pc_port);
+    RetroItem items[6];
+    int system = 0, offset = 0, selected = 0, total = 0;
+    int count = retro_load(base, token, system, offset, items, &total, message, sizeof(message));
+    uint32_t prev = ORBIS_PAD_BUTTON_CROSS;
+    unsigned ticks = 0, requestSeq = 0;
+    retro_draw(items, count, total, offset, selected, system, message);
+    for (;;) {
+        OrbisPadData data;
+        memset(&data, 0, sizeof(data));
+        if (scePadReadState(padHandle, &data) < 0) { sceKernelUsleep(30000); continue; }
+        uint32_t now = pad_navigation(&data);
+        uint32_t pressed = now & ~prev; prev = now;
+        int reload = 0, changed = 0;
+        if (pressed & ORBIS_PAD_BUTTON_CIRCLE) return;
+        if (pressed & ORBIS_PAD_BUTTON_LEFT) { system = (system + 9) % 10; offset = selected = 0; reload = 1; }
+        if (pressed & ORBIS_PAD_BUTTON_RIGHT) { system = (system + 1) % 10; offset = selected = 0; reload = 1; }
+        if ((pressed & ORBIS_PAD_BUTTON_DOWN) && count) {
+            if (selected + 1 < count) selected++;
+            else if (offset + count < total) { offset += 6; selected = 0; reload = 1; }
+            changed = 1;
+        }
+        if ((pressed & ORBIS_PAD_BUTTON_UP) && count) {
+            if (selected > 0) selected--;
+            else if (offset >= 6) { offset -= 6; selected = 5; reload = 1; }
+            changed = 1;
+        }
+        if ((pressed & ORBIS_PAD_BUTTON_CROSS) && count) {
+            char url[512], response[1024] = {0}; int status = 0;
+            snprintf(url, sizeof(url), "%s/api/v1/retro/launch?id=%s&request=ps4_%ld_%u_%d", base,
+                     items[selected].id, (long)time(NULL), ++requestSeq, frameId);
+            if (http_get_text(url, token, response, sizeof(response), &status) && status == 200)
+                snprintf(message, sizeof(message), "EMULADOR LANZADO EN PC - SIN STREAMING");
+            else if (!json_extract_string(response, "error", message, sizeof(message)))
+                snprintf(message, sizeof(message), "ERROR DE LANZAMIENTO - REVISA PC");
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_TRIANGLE) {
+            char url[256], response[512]; int status = 0;
+            snprintf(url, sizeof(url), "%s/api/v1/retro/stop", base);
+            http_get_text(url, token, response, sizeof(response), &status);
+            snprintf(message, sizeof(message), status == 200 ? "EMULADOR DETENIDO" : "NO SE PUDO DETENER");
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_SQUARE) reload = 1;
+        if (++ticks % 65 == 0) menu_heartbeat(pc_ip, pc_port);
+        if (reload) {
+            count = retro_load(base, token, system, offset, items, &total, message, sizeof(message));
+            if (selected >= count) selected = count ? count - 1 : 0;
+            changed = 1;
+        }
+        if (changed) retro_draw(items, count, total, offset, selected, system, message);
+        sceKernelUsleep(30000);
+    }
+}
+
 static void ack_command(const char *base, const char *token, int cmdId, const char *result) {
     char url[512];
     char tmp[1024];
@@ -677,7 +820,7 @@ static int responsive_wait_for_menu(const char *pc_ip, int pc_port, uint32_t use
         OrbisPadData data;
         memset(&data, 0, sizeof(data));
         if (scePadReadState(padHandle, &data) >= 0) {
-            uint32_t now = data.buttons;
+            uint32_t now = pad_navigation(&data);
             uint32_t pressed = now & ~prev;
             prev = now;
             if (pressed & ORBIS_PAD_BUTTON_OPTIONS) {
@@ -905,3 +1048,4 @@ int main(void) {
         }
     }
 }
+
