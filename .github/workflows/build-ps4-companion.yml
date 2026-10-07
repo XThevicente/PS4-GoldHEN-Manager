@@ -28,7 +28,7 @@ jobs:
 
       - name: Prepare package assets
         working-directory: companion/ps4_app
-        run: ./prepare_openorbis_assets.sh
+        run: bash ./prepare_openorbis_assets.sh
 
       - name: Build PKG
         working-directory: companion/ps4_app
