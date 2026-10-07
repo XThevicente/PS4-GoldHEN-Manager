@@ -1,0 +1,41 @@
+name: Build Companion Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ps4-companion-v0.3
+    paths:
+      - 'companion/companion_control.py'
+      - 'companion/companion_server.py'
+      - 'assets/ps4_goldhen_manager.ico'
+      - '.github/workflows/build-companion-windows.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Validate Companion source
+        run: |
+          python -m py_compile companion/companion_server.py
+          python -m py_compile companion/companion_control.py
+
+      - name: Build Companion EXE
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.3.0 --icon assets/ps4_goldhen_manager.ico --paths companion companion/companion_control.py
+
+      - name: Upload Companion EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS4_GoldHEN_Companion_PC_v0.3.0_Windows
+          path: dist/PS4_GoldHEN_Companion_PC_v0.3.0.exe
