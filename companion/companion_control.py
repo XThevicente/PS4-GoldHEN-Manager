@@ -8,7 +8,7 @@ from companion_server import CompanionService, local_ipv4, HTTP_PORT, DISCOVERY_
 class CompanionControl(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PS4 GoldHEN Companion v0.1")
+        self.title("PS4 GoldHEN Companion v0.2.1")
         self.geometry("560x360")
         self.minsize(520, 330)
         self.configure(bg="#071426")
@@ -28,7 +28,7 @@ class CompanionControl(tk.Tk):
         style.configure("Accent.TLabel", background="#071426", foreground="#49c8ff", font=("Consolas", 24, "bold"))
         root=ttk.Frame(self,padding=20)
         root.pack(fill="both",expand=True)
-        ttk.Label(root,text="PS4 GoldHEN Companion",style="Title.TLabel").pack(anchor="w")
+        ttk.Label(root,text="PS4 GoldHEN Companion v0.2.1",style="Title.TLabel").pack(anchor="w")
         ttk.Label(root,text="Conexión local PS4 ↔ PC · protocolo v1").pack(anchor="w",pady=(0,18))
         self.status=tk.StringVar(value="Servidor detenido")
         self.addr=tk.StringVar(value=f"PC: {local_ipv4()}:{HTTP_PORT}   ·   Discovery UDP {DISCOVERY_PORT}")
@@ -43,7 +43,7 @@ class CompanionControl(tk.Tk):
         ttk.Button(row,text="Detener",command=self.stop_server).pack(side="left",padx=8)
         ttk.Button(row,text="Copiar código",command=self.copy_code).pack(side="left")
         ttk.Separator(root).pack(fill="x",pady=8)
-        ttk.Label(root,text="Primera conexión: crea /data/ps4gh_pair_code.txt en la PS4 con este código.\nDespués la PS4 guarda un token y ya no necesita el código.",wraplength=500).pack(anchor="w",pady=8)
+        ttk.Label(root,text="Primera conexión: crea /data/ps4gh_pair_code.txt en la PS4 con este código.\nDespués la PS4 guarda un token y ya no necesita el código.\nBroadcast reforzado: 255.255.255.255 + subred local.",wraplength=500).pack(anchor="w",pady=8)
         self.paired=tk.StringVar(value="Dispositivo: —")
         ttk.Label(root,textvariable=self.paired).pack(anchor="w",pady=(10,0))
 
