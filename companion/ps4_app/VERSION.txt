@@ -1,3 +1,3 @@
-PS4 GoldHEN Companion v0.2.0
+PS4 GoldHEN Companion v0.3.0
 Protocol: ps4gh-companion/1
-Visible VideoOut status UI + boot markers
+Heartbeat + controller pairing + PC-to-PS4 command channel
