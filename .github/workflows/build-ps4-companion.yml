@@ -12,13 +12,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Verify build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld curl tar
+          for tool in clang-14 ld.lld-14 curl tar; do
+            command -v "$tool"
+          done
+          clang-14 --version
+          ld.lld-14 --version
 
       - name: Download OpenOrbis v0.5.4
         run: |
@@ -32,7 +36,7 @@ jobs:
 
       - name: Build PKG
         working-directory: companion/ps4_app
-        run: make
+        run: make CC=clang-14 LD=ld.lld-14
 
       - name: Upload PKG
         uses: actions/upload-artifact@v4
