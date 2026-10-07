@@ -1,2 +1,3 @@
-PS4 GoldHEN Companion v0.1.0
+PS4 GoldHEN Companion v0.2.0
 Protocol: ps4gh-companion/1
+Visible VideoOut status UI + boot markers
