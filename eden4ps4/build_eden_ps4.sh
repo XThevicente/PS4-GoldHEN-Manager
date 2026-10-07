@@ -68,7 +68,14 @@ rm -rf build
 # Do not pass Eden's ARCH_FLAGS override: the toolchain above owns target flags and include order.
 cmake -S . -B build -G "Unix Makefiles"   -DCMAKE_TOOLCHAIN_FILE="$EDEN_DIR/ps4-toolchain.cmake"   -DENABLE_QT_TRANSLATION=OFF   -DENABLE_CUBEB=OFF   -DCMAKE_BUILD_TYPE=Release   -DENABLE_LIBUSB=OFF   -DENABLE_UPDATE_CHECKER=OFF   -DENABLE_QT=OFF   -DENABLE_OPENGL=ON   -DENABLE_WEB_SERVICE=OFF   -DUSE_DISCORD_PRESENCE=OFF   -DCPMUTIL_FORCE_BUNDLED=ON   -DYUZU_USE_EXTERNAL_FFMPEG=ON   -DYUZU_USE_CPM=ON   -DDYNARMIC_ENABLE_NO_EXECUTE_SUPPORT=OFF   -DDYNARMIC_TESTS=OFF   -DYUZU_TESTS=OFF
 
-cmake --build build --target yuzu-cmd_pkg --parallel "${NPROC:-2}"
+if ! cmake --build build --target yuzu-cmd_pkg --parallel "${NPROC:-2}"; then
+  echo "== Build failed: diagnostic logs =="
+  if [[ -f build/_deps/ffmpeg-build/ffbuild/config.log ]]; then
+    echo "---- FFmpeg ffbuild/config.log (tail) ----"
+    tail -n 500 build/_deps/ffmpeg-build/ffbuild/config.log || true
+  fi
+  exit 1
+fi
 
 echo "== Eden PS4 outputs =="
 find build -maxdepth 3 -type f \( -name 'eden-cli*' -o -name 'eboot.bin' -o -name '*.oelf' -o -name '*.pkg' \) -print -exec ls -lh {} \;
