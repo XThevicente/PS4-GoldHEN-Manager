@@ -45,6 +45,25 @@ if old_libs not in patched:
 p.write_text(patched.replace(old_libs, new_libs))
 PY
 
+# OpenOrbis v0.5.4 libc++ does not expose std::contiguous_iterator.
+# Eden only uses this concept to select the contiguous data()/size() fast path,
+# so use a PS4-local equivalent based on a pointer-returning data().
+python3 - <<'PY'
+from pathlib import Path
+p = Path("src/common/concepts.h")
+s = p.read_text()
+old = """#include <iterator>\n#include <type_traits>"""
+new = """#include <iterator>\n#include <type_traits>\n#include <utility>"""
+if old not in s:
+    raise SystemExit("Eden concepts includes changed; refusing an unverified patch")
+s = s.replace(old, new)
+old_concept = "template <typename T>\nconcept IsContiguousContainer = std::contiguous_iterator<typename T::iterator>;"
+new_concept = """template <typename T>\n#ifdef __OPENORBIS__\nconcept IsContiguousContainer = requires(T& value) {\n    value.data();\n    value.size();\n} && std::is_pointer_v<decltype(std::declval<T&>().data())>;\n#else\nconcept IsContiguousContainer = std::contiguous_iterator<typename T::iterator>;\n#endif"""
+if old_concept not in s:
+    raise SystemExit("Eden contiguous-container concept changed; refusing an unverified patch")
+p.write_text(s.replace(old_concept, new_concept))
+PY
+
 # Eden's PS4 branch links the driver by the conventional name "vulkan_radeon".
 # Put the matched SDK bundle's archive in the OpenOrbis library search path.
 ln -sf "$MESA_VK" "$OO_PS4_TOOLCHAIN/lib/libvulkan_radeon.a"
