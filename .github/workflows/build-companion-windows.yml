@@ -37,11 +37,11 @@ jobs:
       - name: Build Companion EXE
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.5.0 --icon assets/ps4_goldhen_manager.ico --paths companion companion/companion_control.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.5.1 --icon assets/ps4_goldhen_manager.ico --paths companion companion/companion_control.py
 
       - name: Upload Companion EXE
         uses: actions/upload-artifact@v4
         with:
-          name: PS4_GoldHEN_Companion_PC_v0.5.0_Windows
-          path: dist/PS4_GoldHEN_Companion_PC_v0.5.0.exe
+          name: PS4_GoldHEN_Companion_PC_v0.5.1_Windows
+          path: dist/PS4_GoldHEN_Companion_PC_v0.5.1.exe
 

@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox, filedialog
 import threading
 import json
 import secrets
+import os
 from pathlib import Path
 from retro_manager import SYSTEMS
 
@@ -227,13 +228,17 @@ class CompanionControl(tk.Tk):
     def retro_configure(self):
         retro = self._retro()
         if not retro: return
-        win = tk.Toplevel(self); win.title("Configurar emulador PC"); win.geometry("650x280")
+        win = tk.Toplevel(self); win.title("Configurar emulador PC"); win.geometry("700x350")
         system = tk.StringVar(value="nes"); exe = tk.StringVar(); args = tk.StringVar(value='["{rom}"]')
         ttk.Label(win, text="Sistema").pack(anchor="w", padx=16, pady=6)
         ttk.Combobox(win, textvariable=system, values=list(SYSTEMS), state="readonly").pack(fill="x", padx=16)
-        ttk.Label(win, text="Ejecutable instalado en el PC").pack(anchor="w", padx=16, pady=6)
+        ttk.Label(win, text="Ejecutable del emulador: por ejemplo Mesen.exe o retroarch.exe").pack(anchor="w", padx=16, pady=6)
         ttk.Entry(win, textvariable=exe).pack(fill="x", padx=16)
-        ttk.Button(win, text="Seleccionar ejecutable", command=lambda: exe.set(filedialog.askopenfilename(parent=win) or exe.get())).pack(anchor="w", padx=16)
+        ttk.Button(win, text="Seleccionar ejecutable", command=lambda: exe.set(filedialog.askopenfilename(
+            parent=win, title="Selecciona el programa del emulador",
+            filetypes=[("Emulador Windows (.exe)", "*.exe")] if os.name == "nt" else [("Ejecutables", "*")]
+        ) or exe.get())).pack(anchor="w", padx=16)
+        ttk.Label(win, text="El juego .nes se selecciona desde la biblioteca; aqui necesitas el programa que lo ejecuta.", wraplength=650).pack(anchor="w", padx=16, pady=6)
         ttk.Label(win, text='Argumentos JSON; RetroArch: ["-L", "ruta/al/core.dll", "{rom}"]').pack(anchor="w", padx=16, pady=6)
         ttk.Entry(win, textvariable=args).pack(fill="x", padx=16)
         def load_profile(event=None):

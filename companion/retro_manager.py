@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import struct
 import threading
 from pathlib import Path
 
@@ -16,6 +17,47 @@ SYSTEMS = {
     "n64": ("NINTENDO 64", {".z64", ".n64", ".v64"}),
     "homebrew": ("HOMEBREW", {".rom"}),
 }
+
+def validate_emulator(executable, *, platform_name=None):
+    """Validate an installed executable before saving or launching a profile."""
+    if not str(executable).strip():
+        raise ValueError("Selecciona el ejecutable del emulador instalado en el PC")
+    try:
+        exe = Path(executable).expanduser().resolve(strict=True)
+    except (FileNotFoundError, OSError) as exc:
+        raise ValueError("No se encuentra el emulador. Vuelve a seleccionarlo en Configurar emulador") from exc
+    if not exe.is_file():
+        raise ValueError("Selecciona el archivo ejecutable del emulador")
+    if exe.suffix.lower() in {".nes", ".sfc", ".smc", ".gb", ".gbc", ".gba", ".md", ".gen", ".smd", ".cue", ".chd", ".pbp", ".n64", ".z64", ".v64", ".rom", ".bin"}:
+        raise ValueError("Has seleccionado un juego. En Emulador elige Mesen.exe o el EXE de tu emulador; las ROMs van en Carpeta ROMs")
+    if exe.suffix.lower() in {".dll", ".so", ".dylib"}:
+        raise ValueError("Ese archivo es un core o biblioteca. Selecciona retroarch.exe como emulador y usa el core en los argumentos")
+    if exe.suffix.lower() in {".zip", ".7z", ".rar"}:
+        raise ValueError("Extrae la descarga del emulador y selecciona el EXE de dentro")
+    if (platform_name or os.name) == "nt":
+        if exe.suffix.lower() != ".exe":
+            raise ValueError("En Windows selecciona el archivo .exe del emulador")
+        with exe.open("rb") as file:
+            header = file.read(64)
+            if len(header) < 64 or header[:2] != b"MZ":
+                raise ValueError("El archivo no tiene una cabecera EXE de Windows. Descarga y extrae la version Windows del emulador")
+            offset = struct.unpack_from("<I", header, 60)[0]
+            if offset < 64 or offset + 26 > exe.stat().st_size:
+                raise ValueError("El EXE esta incompleto o danado; vuelve a extraerlo o descargarlo")
+            file.seek(offset)
+            pe = file.read(26)
+            if pe[:4] != b"PE\x00\x00":
+                raise ValueError("El archivo no es un ejecutable PE de Windows")
+            characteristics = struct.unpack_from("<H", pe, 22)[0]
+            if characteristics & 0x2000:
+                raise ValueError("El archivo es una DLL aunque se llame .exe. Selecciona el EXE principal del emulador")
+            optional_size = struct.unpack_from("<H", pe, 20)[0]
+            magic = struct.unpack_from("<H", pe, 24)[0]
+            if not characteristics & 0x0002 or optional_size < 2 or magic not in (0x10b, 0x20b) or offset + 24 + optional_size > exe.stat().st_size:
+                raise ValueError("El EXE no tiene una cabecera ejecutable valida o esta incompleto")
+    elif not os.access(exe, os.X_OK):
+        raise ValueError("El archivo del emulador no tiene permiso de ejecucion")
+    return exe
 
 class RetroManager:
     def __init__(self, directory: Path):
@@ -52,9 +94,7 @@ class RetroManager:
     def configure_emulator(self, system, executable, arguments):
         if system not in SYSTEMS:
             raise ValueError("Sistema desconocido")
-        exe = Path(executable).expanduser().resolve(strict=True)
-        if not exe.is_file():
-            raise ValueError("El emulador debe ser un archivo")
+        exe = validate_emulator(executable)
         if not isinstance(arguments, list) or not all(isinstance(a, str) for a in arguments):
             raise ValueError('Argumentos: lista JSON, por ejemplo ["{rom}"]')
         if not any("{rom}" in a for a in arguments):
@@ -133,10 +173,16 @@ class RetroManager:
             path = Path(entry["path"]).resolve(strict=True)
             if not path.is_relative_to(root) or not path.is_file():
                 raise ValueError("La ROM ya no está dentro de la biblioteca")
-            argv = [profile["executable"]] + [a.replace("{rom}", str(path)) for a in profile["arguments"]]
-            self.process = subprocess.Popen(argv, cwd=str(Path(profile["executable"]).parent),
-                                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL, shell=False)
+            exe = validate_emulator(profile["executable"])
+            argv = [str(exe)] + [a.replace("{rom}", str(path)) for a in profile["arguments"]]
+            try:
+                self.process = subprocess.Popen(argv, cwd=str(exe.parent),
+                                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                                stderr=subprocess.DEVNULL, shell=False)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) in (193, 216):
+                    raise ValueError("Windows no puede abrir el emulador. Selecciona un EXE compatible con tu PC y comprueba que abre directamente") from exc
+                raise
             self.running_id = rom_id
             response = {"ok": True, "result": "LAUNCHED_ON_PC", "rom_id": rom_id, "streaming": False}
             self.requests[request_id] = (rom_id, response)

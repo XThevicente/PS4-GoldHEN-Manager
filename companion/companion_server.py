@@ -12,6 +12,7 @@ import secrets
 import socket
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,7 +22,7 @@ from retro_manager import RetroManager
 
 APP_NAME = "PS4 GoldHEN Manager"
 PROTOCOL = "ps4gh-companion/1"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 HTTP_PORT = 8787
 DISCOVERY_PORT = 8786
 OFFER_MAGIC = "PS4GH_OFFER_V1"
@@ -60,6 +61,8 @@ def local_ipv4() -> str:
 
 
 def safe_text(text: str, limit: int = 80) -> str:
+    text = unicodedata.normalize("NFKD", str(text))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in str(text))
     return text.replace("\\", "/").replace('"', "'").strip()[:limit]
 
@@ -171,7 +174,7 @@ class CompanionService:
         service = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "PS4GHCompanion/0.5.0"
+            server_version = "PS4GHCompanion/0.5.1"
 
             def log_message(self, fmt, *args):
                 print(f"[HTTP] {self.address_string()} - {fmt % args}")

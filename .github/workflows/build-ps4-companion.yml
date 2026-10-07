@@ -37,6 +37,6 @@ jobs:
       - name: Upload PKG
         uses: actions/upload-artifact@v4
         with:
-          name: PS4_GoldHEN_Companion_v0.5.0_PKG
+          name: PS4_GoldHEN_Companion_v0.5.1_PKG
           path: companion/ps4_app/*.pkg
 

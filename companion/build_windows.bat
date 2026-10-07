@@ -4,7 +4,7 @@ py -3 -m pip install pyinstaller
 if errorlevel 1 exit /b 1
 py -3 -m unittest discover -s tests -v
 if errorlevel 1 exit /b 1
-py -3 -m PyInstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.5.0 --paths . companion_control.py
+py -3 -m PyInstaller --noconfirm --clean --onefile --windowed --name PS4_GoldHEN_Companion_PC_v0.5.1 --paths . companion_control.py
 if errorlevel 1 exit /b 1
-echo EXE creado en dist\PS4_GoldHEN_Companion_PC_v0.5.0.exe
+echo EXE creado en dist\PS4_GoldHEN_Companion_PC_v0.5.1.exe
 pause

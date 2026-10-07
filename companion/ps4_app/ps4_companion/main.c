@@ -15,10 +15,10 @@
 #include <orbis/UserService.h>
 #include <orbis/Pad.h>
 
-#define APP_VERSION "0.5.0"
+#define APP_VERSION "0.5.1"
 #define HTTP_SUCCESS 1
 #define HTTP_FAILED 0
-#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.5.0"
+#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.5.1"
 #define NET_POOLSIZE (4 * 1024)
 #define DISCOVERY_PORT 8786
 #define HTTP_PORT 8787
@@ -60,7 +60,7 @@ static void *videoMem = NULL;
 
 static int padHandle = -1;
 
-static const char FONT_CHARS[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./:_?";
+static const char FONT_CHARS[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./:_?()[]%,+!'\"=";
 static const uint8_t FONT[][7] = {
     {0,0,0,0,0,0,0},
     {14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},
@@ -77,8 +77,14 @@ static const uint8_t FONT[][7] = {
     {6,8,16,30,17,17,14},{31,1,2,4,8,8,8},{14,17,17,14,17,17,14},
     {14,17,17,15,1,2,12},
     {0,0,0,31,0,0,0},{0,0,0,0,0,12,12},{0,1,2,4,8,16,0},{0,12,12,0,12,12,0},
-    {0,0,0,0,0,0,31},{14,17,1,2,4,0,4}
+    {0,0,0,0,0,0,31},{14,17,1,2,4,0,4},
+    {2,4,8,8,8,4,2},{8,4,2,2,2,4,8},
+    {14,8,8,8,8,8,14},{14,2,2,2,2,2,14},
+    {17,2,4,8,16,17,0},{0,0,0,0,0,4,8},
+    {0,4,4,31,4,4,0},{4,4,4,4,4,0,4},
+    {4,4,8,0,0,0,0},{10,10,0,0,0,0,0},{0,0,31,0,31,0,0}
 };
+_Static_assert(sizeof(FONT) / sizeof(FONT[0]) == sizeof(FONT_CHARS) - 1, "Font glyph count mismatch");
 
 static uint32_t rgb(uint8_t r, uint8_t g, uint8_t b) {
     return 0x80000000u | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
@@ -192,7 +198,7 @@ static void draw_base(void) {
     fill_rect(105, 120, 1710, 830, panel);
     draw_text(160, 175, "PS4 GOLDHEN", 6, blue);
     draw_text(160, 235, "COMPANION", 6, gold);
-    draw_text(160, 320, "V0.5", 4, muted);
+    draw_text(160, 320, "V0.5.1", 4, muted);
     draw_text(160, 810, "OPTIONS MENU   PS4 TO PC  LAN ONLY", 3, muted);
     draw_text(160, 860, "UDP 8786   HTTP 8787", 3, muted);
 }

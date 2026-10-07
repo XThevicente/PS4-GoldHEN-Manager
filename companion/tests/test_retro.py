@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from retro_manager import RetroManager
-from companion_server import CompanionService
+from retro_manager import RetroManager, validate_emulator
+from companion_server import CompanionService, safe_text
 
 class RetroTests(unittest.TestCase):
     def setUp(self):
@@ -107,5 +107,52 @@ class RetroTests(unittest.TestCase):
         self.assertTrue(self.retro.status()["running"])
         self.retro.stop()
         self.assertFalse(self.retro.status()["running"])
+
+    def test_rom_is_rejected_as_emulator(self):
+        with self.assertRaisesRegex(ValueError, "Has seleccionado un juego"):
+            self.retro.configure_emulator("nes", self.retro.entries[0]["path"], ["{rom}"])
+        self.assertNotIn("nes", self.retro.config["emulators"])
+
+    def test_legacy_profile_is_validated_before_launch(self):
+        entry = self.retro.entries[0]
+        self.retro.config["emulators"]["nes"] = {"executable": entry["path"], "arguments": ["{rom}"]}
+        with patch("retro_manager.subprocess.Popen") as spawn:
+            with self.assertRaisesRegex(ValueError, "Has seleccionado un juego"):
+                self.retro.launch(entry["id"], "bad-profile")
+            spawn.assert_not_called()
+
+    def test_dll_and_archive_are_rejected(self):
+        for name, message in [("core.dll", "core o biblioteca"), ("download.zip", "Extrae la descarga")]:
+            file = self.root / name; file.write_bytes(b"fixture")
+            with self.assertRaisesRegex(ValueError, message): validate_emulator(file)
+
+    def test_renamed_rom_and_truncated_exe_are_rejected(self):
+        fake = self.root / "renamed.exe"; fake.write_bytes(b"NES\x1a" + bytes(64))
+        with self.assertRaisesRegex(ValueError, "cabecera EXE"): validate_emulator(fake, platform_name="nt")
+        header = bytearray(64);header[:2] = b"MZ";header[60:64] = (1024).to_bytes(4, "little")
+        fake.write_bytes(header)
+        with self.assertRaisesRegex(ValueError, "incompleto"): validate_emulator(fake, platform_name="nt")
+
+    def test_pe_validation_rejects_dll_characteristic(self):
+        import struct
+        fake = self.root / "header.exe"
+        data = bytearray(128);data[:2] = b"MZ";struct.pack_into("<I", data, 60, 64)
+        data[64:68] = b"PE\x00\x00";struct.pack_into("<H", data, 84, 2)
+        struct.pack_into("<H", data, 86, 0x0002);struct.pack_into("<H", data, 88, 0x20b)
+        fake.write_bytes(data)
+        self.assertEqual(validate_emulator(fake, platform_name="nt"), fake.resolve())
+        struct.pack_into("<H", data, 86, 0x2002);fake.write_bytes(data)
+        with self.assertRaisesRegex(ValueError, "una DLL"): validate_emulator(fake, platform_name="nt")
+
+    def test_windows_launch_error_has_actionable_message(self):
+        self.retro.configure_emulator("nes", sys.executable, ["{rom}"])
+        error = OSError("bad exe");error.winerror = 193
+        with patch("retro_manager.subprocess.Popen", side_effect=error):
+            with self.assertRaisesRegex(ValueError, "EXE compatible con tu PC"):
+                self.retro.launch(self.retro.entries[0]["id"], "bad-exe")
+        self.assertFalse(self.retro.status()["running"])
+
+    def test_ps4_text_keeps_words_and_parentheses(self):
+        self.assertEqual(safe_text("aplicación válida (DEMO)"), "aplicacion valida (DEMO)")
 
 if __name__ == "__main__": unittest.main()
