@@ -43,9 +43,11 @@ set(CMAKE_C_FLAGS "\${ORBIS_COMMON}")
 set(CMAKE_CXX_FLAGS "\${ORBIS_COMMON}")
 
 set(ORBIS_LINK "-m elf_x86_64 -pie --script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld --eh-frame-hdr --no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan")
-set(CMAKE_EXE_LINKER_FLAGS "\${ORBIS_LINK}")
-set(CMAKE_C_LINK_FLAGS "\${ORBIS_LINK}")
-set(CMAKE_CXX_LINK_FLAGS "\${ORBIS_LINK}")
+# FFmpeg uses the compiler driver for its configure link probes, so these flags must be clang-friendly.
+set(ORBIS_DRIVER_LINK "-fuse-ld=lld -Wl,-m,elf_x86_64 -Wl,-pie -Wl,--script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld -Wl,--eh-frame-hdr -Wl,--no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan")
+set(CMAKE_EXE_LINKER_FLAGS "\${ORBIS_DRIVER_LINK}")
+set(CMAKE_C_LINK_FLAGS "\${ORBIS_DRIVER_LINK}")
+set(CMAKE_CXX_LINK_FLAGS "\${ORBIS_DRIVER_LINK}")
 
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
