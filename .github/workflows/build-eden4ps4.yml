@@ -9,6 +9,10 @@ on:
       - '.github/workflows/build-eden4ps4.yml'
   workflow_dispatch:
 
+concurrency:
+  group: eden4ps4-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -17,10 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reclaim runner disk
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
-          df -h /
 
       - name: Install host build tools
         run: |
