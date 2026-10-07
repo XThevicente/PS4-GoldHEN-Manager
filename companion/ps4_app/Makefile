@@ -1,9 +1,9 @@
 TITLE := PS4 GoldHEN Companion
-VERSION := 0.21
+VERSION := 0.30
 TITLE_ID := BREW00152
 CONTENT_ID := IV0000-BREW00152_00-GOLDHENCOMPANION
 
-LIBS := -lc -lkernel -lSceVideoOut -lSceNet -lSceSsl -lSceHttp -lSceSysmodule
+LIBS := -lc -lkernel -lSceVideoOut -lSceNet -lSceSsl -lSceHttp -lSceSysmodule -lSceUserService -lScePad
 ASSETS := $(wildcard assets/**/*)
 LIBMODULES := $(wildcard sce_module/*)
 
