@@ -14,10 +14,10 @@
 #include <orbis/UserService.h>
 #include <orbis/Pad.h>
 
-#define APP_VERSION "0.3.0"
+#define APP_VERSION "0.4.0"
 #define HTTP_SUCCESS 1
 #define HTTP_FAILED 0
-#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.3.0"
+#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.4.0"
 #define NET_POOLSIZE (4 * 1024)
 #define DISCOVERY_PORT 8786
 #define HTTP_PORT 8787
@@ -26,6 +26,7 @@
 #define PAIR_FILE "/data/ps4gh_pair_code.txt"
 #define RESULT_FILE "/data/ps4gh_companion_last.json"
 #define PC_IP_FILE "/data/ps4gh_pc_ip.txt"
+#define RECEIVED_FILE "/data/ps4gh_received.bin"
 #define TRACE_FILE "/data/ps4gh_companion_boot.log"
 
 #define FB_W 1920
@@ -44,6 +45,7 @@ typedef struct {
 } OrbisNetSockaddrInCompat;
 
 static int libnetMemId = 0, libhttpCtxId = 0, libsslCtxId = 0;
+static int netCoreStarted = 0;
 
 static int video = -1;
 static OrbisKernelEqueue flipQueue;
@@ -189,8 +191,8 @@ static void draw_base(void) {
     fill_rect(105, 120, 1710, 830, panel);
     draw_text(160, 175, "PS4 GOLDHEN", 6, blue);
     draw_text(160, 235, "COMPANION", 6, gold);
-    draw_text(160, 320, "V0.3", 4, muted);
-    draw_text(160, 810, "PS4 TO PC  LAN ONLY", 3, muted);
+    draw_text(160, 320, "V0.4", 4, muted);
+    draw_text(160, 810, "OPTIONS MENU   PS4 TO PC  LAN ONLY", 3, muted);
     draw_text(160, 860, "UDP 8786   HTTP 8787", 3, muted);
 }
 
@@ -245,6 +247,53 @@ static void ui_pair_code(const char code[7], int selected) {
         draw_pair_frame(code, selected);
         present();
     }
+}
+
+static void draw_menu_frame(int selected) {
+    const char *items[] = {"ESTADO", "INFO CONSOLA", "RECONECTAR HTTP", "VOLVER"};
+    const uint32_t white = rgb(236, 245, 255);
+    const uint32_t muted = rgb(141, 164, 190);
+    const uint32_t blue = rgb(38, 181, 255);
+    const uint32_t gold = rgb(245, 185, 52);
+    const uint32_t dark = rgb(5, 16, 34);
+
+    draw_base();
+    draw_text(160, 390, "MENU LOCAL", 5, white);
+    for (int i = 0; i < 4; ++i) {
+        int y = 485 + i * 72;
+        if (i == selected) {
+            fill_rect(160, y - 10, 620, 55, gold);
+            draw_text(180, y, items[i], 4, dark);
+        } else {
+            fill_rect(160, y - 10, 620, 55, blue);
+            draw_text(180, y, items[i], 4, white);
+        }
+    }
+    draw_text(850, 500, "ARRIBA/ABAJO SELECCIONA", 3, muted);
+    draw_text(850, 550, "X ACEPTA   O VOLVER", 3, muted);
+}
+
+static void ui_menu(int selected) {
+    for (int i = 0; i < 2; ++i) {
+        draw_menu_frame(selected);
+        present();
+    }
+}
+
+static void get_firmware(char *out, size_t cap) {
+    OrbisKernelSwVersion sw;
+    memset(&sw, 0, sizeof(sw));
+    sw.Size = sizeof(sw);
+    if (sceKernelGetSystemSwVersion(&sw) == 0 && sw.VersionString[0]) {
+        size_t n = 0;
+        for (size_t i = 0; i < sizeof(sw.VersionString) && sw.VersionString[i] && n + 1 < cap; ++i) {
+            char ch = sw.VersionString[i];
+            if ((ch >= '0' && ch <= '9') || ch == '.') out[n++] = ch;
+        }
+        out[n] = 0;
+        if (n) return;
+    }
+    snprintf(out, cap, "DESCONOCIDA");
 }
 
 static int pad_init(void) {
@@ -302,9 +351,7 @@ static int input_pair_code(char out[7]) {
             out[selected] = (out[selected] == '0') ? '9' : (char)(out[selected] - 1);
             changed = 1;
         }
-        if (pressed & ORBIS_PAD_BUTTON_CROSS) {
-            return 1;
-        }
+        if (pressed & ORBIS_PAD_BUTTON_CROSS) return 1;
 
         if (changed) ui_pair_code(out, selected);
         sceKernelUsleep(30000);
@@ -323,14 +370,81 @@ static void pad_feedback(void) {
     scePadSetVibration(padHandle, &vibe);
 }
 
+static int menu_loop(const char *pc_ip, int pc_port) {
+    if (padHandle < 0) return 0;
+    int selected = 0;
+    uint32_t prev = 0;
+    ui_menu(selected);
+
+    /* Wait for OPTIONS to be released before accepting menu input. */
+    for (int i = 0; i < 12; ++i) {
+        OrbisPadData d;
+        memset(&d, 0, sizeof(d));
+        if (scePadReadState(padHandle, &d) >= 0) prev = d.buttons;
+        if (!(prev & ORBIS_PAD_BUTTON_OPTIONS)) break;
+        sceKernelUsleep(30000);
+    }
+
+    for (;;) {
+        OrbisPadData data;
+        memset(&data, 0, sizeof(data));
+        if (scePadReadState(padHandle, &data) < 0) {
+            sceKernelUsleep(30000);
+            continue;
+        }
+        uint32_t now = data.buttons;
+        uint32_t pressed = now & ~prev;
+        prev = now;
+        int changed = 0;
+
+        if (pressed & ORBIS_PAD_BUTTON_UP) {
+            selected = (selected + 3) % 4;
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_DOWN) {
+            selected = (selected + 1) % 4;
+            changed = 1;
+        }
+        if (pressed & ORBIS_PAD_BUTTON_CIRCLE) return 0;
+
+        if (pressed & ORBIS_PAD_BUTTON_CROSS) {
+            char detail[192];
+            if (selected == 0) {
+                snprintf(detail, sizeof(detail), "PC %s:%d  ENLACE ACTIVO", pc_ip, pc_port);
+                ui_screen("ESTADO", detail, 1);
+                sceKernelUsleep(1100000);
+                ui_menu(selected);
+            } else if (selected == 1) {
+                char fw[64];
+                get_firmware(fw, sizeof(fw));
+                snprintf(detail, sizeof(detail), "FIRMWARE %s   APP %s", fw, APP_VERSION);
+                ui_screen("INFO CONSOLA", detail, 1);
+                sceKernelUsleep(1400000);
+                ui_menu(selected);
+            } else if (selected == 2) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        if (changed) ui_menu(selected);
+        sceKernelUsleep(30000);
+    }
+}
+
 static int net_http_init(void) {
     int ret;
     if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET) < 0) return HTTP_FAILED;
     if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_HTTP) < 0) return HTTP_FAILED;
     if (sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_SSL) < 0) return HTTP_FAILED;
 
-    ret = sceNetInit();
-    (void)ret;
+    if (!netCoreStarted) {
+        ret = sceNetInit();
+        (void)ret;
+        netCoreStarted = 1;
+    }
+
     ret = sceNetPoolCreate("PS4GHNetPool", NET_POOLSIZE, 0);
     if (ret < 0) return HTTP_FAILED;
     libnetMemId = ret;
@@ -349,6 +463,9 @@ static void net_http_end(void) {
     if (libhttpCtxId > 0) sceHttpTerm(libhttpCtxId);
     if (libsslCtxId > 0) sceSslTerm(libsslCtxId);
     if (libnetMemId > 0) sceNetPoolDestroy(libnetMemId);
+    libhttpCtxId = 0;
+    libsslCtxId = 0;
+    libnetMemId = 0;
 }
 
 static int read_text_file(const char *path, char *out, size_t cap) {
@@ -411,9 +528,8 @@ static int discover_pc(char *ip_out, size_t ip_cap, int *port_out) {
     return 1;
 }
 
-static int http_get_text(const char *url, const char *token, char *out, size_t out_cap, int *status_out) {
-    int ret, tpl = 0, conn = 0, req = 0;
-    size_t used = 0;
+static int http_open_get(const char *url, const char *token, int *tpl_out, int *conn_out, int *req_out, int *status_out) {
+    int tpl = 0, conn = 0, req = 0;
     if (status_out) *status_out = 0;
 
     tpl = sceHttpCreateTemplate(libhttpCtxId, HTTP_USER_AGENT, ORBIS_HTTP_VERSION_1_1, 1);
@@ -432,24 +548,15 @@ static int http_get_text(const char *url, const char *token, char *out, size_t o
     sceHttpSetConnectTimeOut(req, 3000000);
     sceHttpSetRecvTimeOut(req, 3000000);
 
-    ret = sceHttpSendRequest(req, NULL, 0);
-    if (ret < 0) goto fail;
+    if (sceHttpSendRequest(req, NULL, 0) < 0) goto fail;
 
     int32_t status = 0;
     if (sceHttpGetStatusCode(req, &status) < 0) goto fail;
     if (status_out) *status_out = status;
 
-    while (used + 1 < out_cap) {
-        int n = sceHttpReadData(req, out + used, (uint32_t)(out_cap - used - 1));
-        if (n < 0) goto fail;
-        if (n == 0) break;
-        used += (size_t)n;
-    }
-    out[used] = 0;
-
-    if (req > 0) sceHttpDeleteRequest(req);
-    if (conn > 0) sceHttpDeleteConnection(conn);
-    if (tpl > 0) sceHttpDeleteTemplate(tpl);
+    *tpl_out = tpl;
+    *conn_out = conn;
+    *req_out = req;
     return 1;
 
 fail:
@@ -457,6 +564,70 @@ fail:
     if (conn > 0) sceHttpDeleteConnection(conn);
     if (tpl > 0) sceHttpDeleteTemplate(tpl);
     return 0;
+}
+
+static void http_close_get(int tpl, int conn, int req) {
+    if (req > 0) sceHttpDeleteRequest(req);
+    if (conn > 0) sceHttpDeleteConnection(conn);
+    if (tpl > 0) sceHttpDeleteTemplate(tpl);
+}
+
+static int http_get_text(const char *url, const char *token, char *out, size_t out_cap, int *status_out) {
+    int tpl = 0, conn = 0, req = 0;
+    size_t used = 0;
+    if (!http_open_get(url, token, &tpl, &conn, &req, status_out)) return 0;
+
+    while (used + 1 < out_cap) {
+        int n = sceHttpReadData(req, out + used, (uint32_t)(out_cap - used - 1));
+        if (n < 0) {
+            http_close_get(tpl, conn, req);
+            return 0;
+        }
+        if (n == 0) break;
+        used += (size_t)n;
+    }
+    out[used] = 0;
+    http_close_get(tpl, conn, req);
+    return 1;
+}
+
+static int http_get_file(const char *url, const char *token, const char *path, size_t *bytes_out, int *status_out) {
+    int tpl = 0, conn = 0, req = 0;
+    if (bytes_out) *bytes_out = 0;
+    if (!http_open_get(url, token, &tpl, &conn, &req, status_out)) return 0;
+    if (!status_out || *status_out != 200) {
+        http_close_get(tpl, conn, req);
+        return 0;
+    }
+
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        http_close_get(tpl, conn, req);
+        return 0;
+    }
+
+    char buf[8192];
+    size_t total = 0;
+    for (;;) {
+        int n = sceHttpReadData(req, buf, sizeof(buf));
+        if (n < 0) {
+            fclose(f);
+            http_close_get(tpl, conn, req);
+            return 0;
+        }
+        if (n == 0) break;
+        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) {
+            fclose(f);
+            http_close_get(tpl, conn, req);
+            return 0;
+        }
+        total += (size_t)n;
+    }
+
+    fclose(f);
+    http_close_get(tpl, conn, req);
+    if (bytes_out) *bytes_out = total;
+    return 1;
 }
 
 static int json_extract_string(const char *json, const char *key, char *out, size_t cap) {
@@ -482,6 +653,43 @@ static int json_extract_int(const char *json, const char *key, int *out) {
     p += strlen(needle);
     *out = atoi(p);
     return 1;
+}
+
+static void ack_command(const char *base, const char *token, int cmdId, const char *result) {
+    char url[512];
+    char tmp[1024];
+    int status = 0;
+    snprintf(url, sizeof(url), "%s/api/v1/ack?id=%d&result=%s", base, cmdId, result ? result : "ok");
+    http_get_text(url, token, tmp, sizeof(tmp), &status);
+}
+
+static int responsive_wait_for_menu(const char *pc_ip, int pc_port, uint32_t usec_total) {
+    if (padHandle < 0) {
+        sceKernelUsleep(usec_total);
+        return 0;
+    }
+
+    uint32_t prev = 0;
+    const uint32_t slice = 50000;
+    uint32_t waited = 0;
+
+    while (waited < usec_total) {
+        OrbisPadData data;
+        memset(&data, 0, sizeof(data));
+        if (scePadReadState(padHandle, &data) >= 0) {
+            uint32_t now = data.buttons;
+            uint32_t pressed = now & ~prev;
+            prev = now;
+            if (pressed & ORBIS_PAD_BUTTON_OPTIONS) {
+                int reconnect = menu_loop(pc_ip, pc_port);
+                if (reconnect) return 1;
+                return 0;
+            }
+        }
+        sceKernelUsleep(slice);
+        waited += slice;
+    }
+    return 0;
 }
 
 int main(void) {
@@ -602,19 +810,72 @@ int main(void) {
                 cmdId > 0 && cmdId != lastCommandId) {
 
                 lastCommandId = cmdId;
+
                 if (strcmp(cmdName, "ping") == 0) {
                     trace_marker("COMMAND_09 PING");
                     ui_screen("COMANDO RECIBIDO", "PING DESDE EL PC", 1);
                     pad_feedback();
+                    ack_command(base, token, cmdId, "ok");
+                } else if (strcmp(cmdName, "message") == 0) {
+                    char msg[128] = {0};
+                    json_extract_string(response, "text", msg, sizeof(msg));
+                    trace_marker("COMMAND_09 MESSAGE");
+                    ui_screen("MENSAJE DEL PC", msg[0] ? msg : "SIN TEXTO", 1);
+                    pad_feedback();
+                    ack_command(base, token, cmdId, "shown");
+                    sceKernelUsleep(1700000);
+                } else if (strcmp(cmdName, "get_info") == 0) {
+                    char fw[64];
+                    char result[160];
+                    get_firmware(fw, sizeof(fw));
+                    snprintf(detail, sizeof(detail), "FIRMWARE %s   APP %s", fw, APP_VERSION);
+                    ui_screen("INFO CONSOLA", detail, 1);
+                    snprintf(result, sizeof(result), "fw_%s_app_%s", fw, APP_VERSION);
+                    trace_marker("COMMAND_09 INFO");
+                    ack_command(base, token, cmdId, result);
+                    sceKernelUsleep(1300000);
+                } else if (strcmp(cmdName, "fetch_file") == 0) {
+                    int fileId = 0;
+                    char fileName[80] = {0};
+                    size_t bytes = 0;
+                    json_extract_int(response, "file_id", &fileId);
+                    json_extract_string(response, "file_name", fileName, sizeof(fileName));
+                    snprintf(detail, sizeof(detail), "%s  DESCARGANDO", fileName[0] ? fileName : "ARCHIVO");
+                    ui_screen("RECIBIENDO ARCHIVO", detail, 1);
+
+                    snprintf(url, sizeof(url), "%s/api/v1/file?id=%d", base, fileId);
+                    int fileStatus = 0;
+                    char result[96];
+                    if (fileId > 0 && http_get_file(url, token, RECEIVED_FILE, &bytes, &fileStatus)) {
+                        snprintf(detail, sizeof(detail), "%s  %u BYTES", RECEIVED_FILE, (unsigned)bytes);
+                        ui_screen("ARCHIVO RECIBIDO", detail, 1);
+                        snprintf(result, sizeof(result), "saved_%u_bytes", (unsigned)bytes);
+                        trace_marker("COMMAND_09 FILE OK");
+                        ack_command(base, token, cmdId, result);
+                        pad_feedback();
+                    } else {
+                        snprintf(result, sizeof(result), "file_error_%d", fileStatus);
+                        trace_marker("COMMAND_09 FILE FAIL");
+                        ack_command(base, token, cmdId, result);
+                        ui_screen("ERROR ARCHIVO", result, 0);
+                    }
+                    sceKernelUsleep(1500000);
+                } else if (strcmp(cmdName, "reconnect") == 0) {
+                    trace_marker("COMMAND_09 RECONNECT");
+                    ack_command(base, token, cmdId, "reconnecting");
+                    ui_screen("RECONECTANDO HTTP", "REINICIANDO ENLACE LOCAL", 1);
+                    net_http_end();
+                    sceKernelUsleep(500000);
+                    if (!net_http_init()) {
+                        ui_screen("ERROR DE RED", "NO SE PUDO REINICIAR HTTP", 0);
+                        for (;;) {}
+                    }
+                    sceKernelUsleep(400000);
                 } else {
                     trace_marker("COMMAND_09 UNKNOWN");
                     ui_screen("COMANDO RECIBIDO", cmdName, 1);
+                    ack_command(base, token, cmdId, "unknown");
                 }
-
-                snprintf(url, sizeof(url), "%s/api/v1/ack?id=%d&result=ok", base, cmdId);
-                int ackStatus = 0;
-                http_get_text(url, token, response, sizeof(response), &ackStatus);
-                sceKernelUsleep(900000);
             }
 
             snprintf(detail, sizeof(detail), "PC %s:%d  HEARTBEAT OK", pc_ip, pc_port);
@@ -632,6 +893,15 @@ int main(void) {
             }
         }
 
-        sceKernelUsleep(2000000);
+        if (responsive_wait_for_menu(pc_ip, pc_port, 2000000)) {
+            trace_marker("MENU_RECONNECT");
+            ui_screen("RECONECTANDO HTTP", "SOLICITADO DESDE EL MANDO", 1);
+            net_http_end();
+            sceKernelUsleep(400000);
+            if (!net_http_init()) {
+                ui_screen("ERROR DE RED", "NO SE PUDO REINICIAR HTTP", 0);
+                for (;;) {}
+            }
+        }
     }
 }
