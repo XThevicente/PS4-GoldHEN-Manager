@@ -39,13 +39,13 @@ set(ORBIS_COMPAT_DIR "$ORBIS_COMPAT_DIR")
 set(ORBIS_MESA_BUILD "$ORBIS_MESA_BUILD")
 
 set(ORBIS_COMMON "-D__OPENORBIS__ -D__ORBIS__ -D__PS4__ -DPS4 -DORBIS -D_LIBCPP_HAS_MUSL_LIBC=1 -D_GNU_SOURCE=1 -D_BSD_SOURCE=1 --target=x86_64-pc-freebsd12-elf -mtune=btver2 -march=btver2 -fPIC -funwind-tables -femulated-tls -isystem $OO_PS4_TOOLCHAIN/include/c++/v1 -isystem $ORBIS_COMPAT_DIR/include -isystem $OO_PS4_TOOLCHAIN/include -include orbis_prefix.h")
-set(CMAKE_C_FLAGS "${ORBIS_COMMON}")
-set(CMAKE_CXX_FLAGS "${ORBIS_COMMON}")
+set(CMAKE_C_FLAGS "\${ORBIS_COMMON}")
+set(CMAKE_CXX_FLAGS "\${ORBIS_COMMON}")
 
 set(ORBIS_LINK "-m elf_x86_64 -pie --script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld --eh-frame-hdr --no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan")
-set(CMAKE_EXE_LINKER_FLAGS "${ORBIS_LINK}")
-set(CMAKE_C_LINK_FLAGS "${ORBIS_LINK}")
-set(CMAKE_CXX_LINK_FLAGS "${ORBIS_LINK}")
+set(CMAKE_EXE_LINKER_FLAGS "\${ORBIS_LINK}")
+set(CMAKE_C_LINK_FLAGS "\${ORBIS_LINK}")
+set(CMAKE_CXX_LINK_FLAGS "\${ORBIS_LINK}")
 
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
