@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""PS4 GoldHEN Companion Server v0.3.0
+"""PS4 GoldHEN Companion Server v0.4.0.
 
-LAN-only companion endpoint for the PS4 GoldHEN Companion homebrew.
+LAN-only bridge for the PS4 GoldHEN Companion homebrew.
 """
 from __future__ import annotations
 
@@ -20,10 +20,11 @@ from urllib.parse import parse_qs, urlparse
 
 APP_NAME = "PS4 GoldHEN Manager"
 PROTOCOL = "ps4gh-companion/1"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 HTTP_PORT = 8787
 DISCOVERY_PORT = 8786
 OFFER_MAGIC = "PS4GH_OFFER_V1"
+MAX_PUSH_FILE = 512 * 1024
 
 
 def app_data_dir() -> Path:
@@ -57,6 +58,17 @@ def local_ipv4() -> str:
     return "127.0.0.1"
 
 
+def safe_text(text: str, limit: int = 80) -> str:
+    text = "".join(ch if 32 <= ord(ch) < 127 else " " for ch in str(text))
+    return text.replace("\\", "/").replace('"', "'").strip()[:limit]
+
+
+def safe_file_name(name: str) -> str:
+    raw = Path(name).name
+    cleaned = "".join(ch for ch in raw if ch.isalnum() or ch in "._-")
+    return (cleaned or "ps4gh_received.bin")[:64]
+
+
 @dataclass
 class CompanionState:
     pair_code: str
@@ -68,6 +80,8 @@ class CompanionState:
     command_seq: int = 0
     pending_command: dict | None = None
     last_ack: dict | None = None
+    last_info: str | None = None
+    last_file: str | None = None
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
@@ -89,6 +103,8 @@ class CompanionService:
         self._http: ThreadingHTTPServer | None = None
         self._threads: list[threading.Thread] = []
         self._lock = threading.RLock()
+        self._files: dict[int, tuple[str, bytes]] = {}
+        self._file_seq = 0
 
     def _load_state(self) -> CompanionState:
         try:
@@ -101,6 +117,8 @@ class CompanionService:
                 ps4_firmware=raw.get("ps4_firmware"),
                 app_version=APP_VERSION,
                 command_seq=int(raw.get("command_seq") or 0),
+                last_info=raw.get("last_info"),
+                last_file=raw.get("last_file"),
             )
         except Exception:
             return CompanionState(pair_code="000000")
@@ -110,14 +128,31 @@ class CompanionService:
             self.state.command_seq += 1
             cmd = {
                 "id": self.state.command_seq,
-                "name": str(name)[:32],
-                "created_at": time.time(),
+                "name": safe_text(name, 32),
+                "created_at": int(time.time()),
             }
-            cmd.update(payload)
+            for key, value in payload.items():
+                if isinstance(value, str):
+                    cmd[key] = safe_text(value, 96)
+                elif isinstance(value, (int, float, bool)) or value is None:
+                    cmd[key] = value
             self.state.pending_command = cmd
             self.state.last_ack = None
             self.state.save(self.state_path)
             return dict(cmd)
+
+    def register_file(self, name: str, data: bytes) -> tuple[int, str]:
+        if len(data) > MAX_PUSH_FILE:
+            raise ValueError(f"El archivo supera {MAX_PUSH_FILE // 1024} KiB")
+        with self._lock:
+            self._file_seq += 1
+            fid = self._file_seq
+            fname = safe_file_name(name)
+            self._files[fid] = (fname, bytes(data))
+            # Keep memory bounded.
+            for old_id in sorted(self._files)[:-4]:
+                self._files.pop(old_id, None)
+            return fid, fname
 
     def is_online(self, max_age: float = 5.0) -> bool:
         with self._lock:
@@ -132,7 +167,7 @@ class CompanionService:
         service = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "PS4GHCompanion/0.3.0"
+            server_version = "PS4GHCompanion/0.4.0"
 
             def log_message(self, fmt, *args):
                 print(f"[HTTP] {self.address_string()} - {fmt % args}")
@@ -173,7 +208,7 @@ class CompanionService:
 
                 if parsed.path == "/api/v1/pair":
                     code = (qs.get("code") or [""])[0]
-                    device = (qs.get("device") or ["PS4"])[0][:64]
+                    device = safe_text((qs.get("device") or ["PS4"])[0], 64)
                     with service._lock:
                         if not secrets.compare_digest(code, service.state.pair_code):
                             return self._json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "bad_pair_code"})
@@ -203,11 +238,36 @@ class CompanionService:
                             "paired_device": service.state.paired_device,
                             "last_seen": service.state.last_seen,
                             "online": True,
-                            "capabilities": ["ping", "pair", "status", "poll", "ack", "commands"],
+                            "capabilities": [
+                                "ping", "pair", "status", "poll", "ack",
+                                "message", "get_info", "reconnect", "fetch_file"
+                            ],
                         }
                         if parsed.path == "/api/v1/poll":
                             payload["command"] = service.state.pending_command
                     return self._json(HTTPStatus.OK, payload)
+
+                if parsed.path == "/api/v1/file":
+                    if not self._authorized():
+                        return self._json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+                    try:
+                        file_id = int((qs.get("id") or ["0"])[0])
+                    except ValueError:
+                        file_id = 0
+                    with service._lock:
+                        item = service._files.get(file_id)
+                    if not item:
+                        return self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "file_not_found"})
+                    name, data = item
+                    service._touch()
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("X-PS4GH-Name", name)
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
 
                 if parsed.path == "/api/v1/ack":
                     if not self._authorized():
@@ -216,17 +276,22 @@ class CompanionService:
                         cmd_id = int((qs.get("id") or ["0"])[0])
                     except ValueError:
                         cmd_id = 0
-                    result = (qs.get("result") or ["ok"])[0][:32]
+                    result = safe_text((qs.get("result") or ["ok"])[0], 120)
                     service._touch()
                     with service._lock:
                         pending = service.state.pending_command
                         if pending and int(pending.get("id", 0)) == cmd_id:
+                            name = pending.get("name")
                             service.state.last_ack = {
                                 "id": cmd_id,
-                                "name": pending.get("name"),
+                                "name": name,
                                 "result": result,
                                 "time": time.time(),
                             }
+                            if name == "get_info":
+                                service.state.last_info = result
+                            elif name == "fetch_file":
+                                service.state.last_file = result
                             service.state.pending_command = None
                             service.state.save(service.state_path)
                             return self._json(HTTPStatus.OK, {"ok": True, "acked": cmd_id})
@@ -248,7 +313,7 @@ class CompanionService:
                 service._touch()
                 with service._lock:
                     if isinstance(payload, dict) and isinstance(payload.get("firmware"), str):
-                        service.state.ps4_firmware = payload["firmware"][:32]
+                        service.state.ps4_firmware = safe_text(payload["firmware"], 32)
                     service.state.save(service.state_path)
                 print("[PS4 EVENT]", json.dumps(payload, ensure_ascii=False))
                 return self._json(HTTPStatus.OK, {"ok": True})
