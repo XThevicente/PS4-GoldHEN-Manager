@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PS4 GoldHEN Manager Companion Server v0.1
+"""PS4 GoldHEN Manager Companion Server v0.2.1
 
 LAN-only companion endpoint for a PS4 homebrew client.
 No external services are required.
@@ -64,7 +64,7 @@ class CompanionState:
     paired_device: str | None = None
     last_seen: float | None = None
     ps4_firmware: str | None = None
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.1"
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
@@ -92,7 +92,7 @@ class CompanionService:
                 paired_device=raw.get("paired_device"),
                 last_seen=raw.get("last_seen"),
                 ps4_firmware=raw.get("ps4_firmware"),
-                app_version=str(raw.get("app_version") or "0.1.0"),
+                app_version="0.2.1",
             )
         except Exception:
             return CompanionState(pair_code="000000")
@@ -101,7 +101,7 @@ class CompanionService:
         service = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "PS4GHCompanion/0.1"
+            server_version = "PS4GHCompanion/0.2.1"
 
             def log_message(self, fmt, *args):
                 print(f"[HTTP] {self.address_string()} - {fmt % args}")
@@ -195,13 +195,29 @@ class CompanionService:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
         while not self._stop.is_set():
-            payload = f"{OFFER_MAGIC}|{local_ipv4()}|{self.http_port}|{socket.gethostname()}".encode("ascii", "ignore")
-            try:
-                s.sendto(payload, ("255.255.255.255", self.discovery_port))
-            except OSError:
-                pass
-            self._stop.wait(1.0)
+            ip = local_ipv4()
+            payload = f"{OFFER_MAGIC}|{ip}|{self.http_port}|{socket.gethostname()}".encode("ascii", "ignore")
+
+            targets = [("255.255.255.255", self.discovery_port)]
+            parts = ip.split(".")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                # Most home LANs use /24. Sending this in addition to the limited
+                # broadcast fixes Windows/router combinations that drop 255.255.255.255.
+                targets.append((".".join(parts[:3] + ["255"]), self.discovery_port))
+
+            sent = set()
+            for target in targets:
+                if target in sent:
+                    continue
+                sent.add(target)
+                try:
+                    s.sendto(payload, target)
+                except OSError:
+                    pass
+
+            self._stop.wait(0.75)
         s.close()
 
     def start(self):
