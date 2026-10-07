@@ -12,10 +12,10 @@
 #include <orbis/Net.h>
 #include <orbis/Sysmodule.h>
 
-#define APP_VERSION "0.2"
+#define APP_VERSION "0.2.1"
 #define HTTP_SUCCESS 1
 #define HTTP_FAILED 0
-#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.2"
+#define HTTP_USER_AGENT "PS4-GoldHEN-Companion/0.2.1"
 #define NET_POOLSIZE (4 * 1024)
 #define DISCOVERY_PORT 8786
 #define HTTP_PORT 8787
@@ -23,6 +23,7 @@
 #define TOKEN_FILE "/data/ps4gh_companion.token"
 #define PAIR_FILE "/data/ps4gh_pair_code.txt"
 #define RESULT_FILE "/data/ps4gh_companion_last.json"
+#define PC_IP_FILE "/data/ps4gh_pc_ip.txt"
 #define TRACE_FILE "/data/ps4gh_companion_boot.log"
 
 #define FB_W 1920
@@ -397,14 +398,20 @@ int main(void) {
 
     char pc_ip[64] = {0};
     int pc_port = HTTP_PORT;
-    if (!discover_pc(pc_ip, sizeof(pc_ip), &pc_port)) {
+
+    if (read_text_file(PC_IP_FILE, pc_ip, sizeof(pc_ip))) {
+        trace_marker("DISCOVERY_04 MANUAL IP");
+        char manual_detail[256];
+        snprintf(manual_detail, sizeof(manual_detail), "IP MANUAL %s:%d", pc_ip, pc_port);
+        ui_screen("PC CONFIGURADO", manual_detail, 1);
+    } else if (!discover_pc(pc_ip, sizeof(pc_ip), &pc_port)) {
         trace_marker("DISCOVERY_04 FAIL");
-        ui_screen("PC NO ENCONTRADO", "REVISA MISMA RED Y FIREWALL", 0);
+        ui_screen("PC NO ENCONTRADO", "REVISA FIREWALL O CREA /DATA/PS4GH_PC_IP.TXT", 0);
         net_http_end();
         for (;;) {}
+    } else {
+        trace_marker("DISCOVERY_04 OK");
     }
-
-    trace_marker("DISCOVERY_04 OK");
     char detail[256];
     snprintf(detail, sizeof(detail), "PC %s:%d", pc_ip, pc_port);
     ui_screen("PC ENCONTRADO", detail, 1);
