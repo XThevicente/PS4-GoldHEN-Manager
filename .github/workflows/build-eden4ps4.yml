@@ -1,0 +1,71 @@
+name: Experimental Eden4PS4
+
+on:
+  push:
+    branches:
+      - experiment/eden4ps4
+    paths:
+      - 'eden4ps4/**'
+      - '.github/workflows/build-eden4ps4.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          df -h /
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm git curl tar python3-pip nasm autoconf automake libtool pkg-config make ninja-build bison flex
+          sudo ln -sf /usr/bin/make /usr/local/bin/gmake
+          python3 -m pip install --user 'cmake>=3.31,<4.3'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch paired PS4 SDK bundle
+        run: |
+          curl -fL --retry 3 -o orbis-sdk-v1.tar.gz             https://github.com/orbis-ports/orbis-porting-kit/releases/download/orbis-sdk-v1/orbis-sdk-v1.tar.gz
+          tar -xzf orbis-sdk-v1.tar.gz
+          root="$(find "$PWD" -maxdepth 2 -type f -name BUNDLE.txt -printf '%h\n' | head -1)"
+          test -n "$root"
+          echo "ORBIS_SDK_BUNDLE=$root" >> "$GITHUB_ENV"
+          "$root/verify.sh" "$root"
+
+      - name: Record upstream revisions
+        run: |
+          git ls-remote https://github.com/eden-emulator/mirror.git refs/heads/eden-orbis-ps4
+          cat "$ORBIS_SDK_BUNDLE/BUNDLE.txt"
+
+      - name: Build Eden CLI for PS4
+        env:
+          NPROC: 2
+        run: bash eden4ps4/build_eden_ps4.sh
+
+      - name: Collect outputs
+        if: always()
+        run: |
+          mkdir -p eden4ps4-out
+          if [ -d eden-src/build ]; then
+            find eden-src/build -type f \( -name 'eden-cli*' -o -name '*.pkg' -o -name '*.oelf' -o -name 'eboot.bin' \) -exec cp -v {} eden4ps4-out/ \; || true
+          fi
+          {
+            echo "Eden branch: eden-orbis-ps4"
+            echo "PS4 SDK bundle: orbis-sdk-v1"
+            date -u
+          } > eden4ps4-out/BUILD_INFO.txt
+
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Eden4PS4-experimental
+          path: eden4ps4-out/
+          if-no-files-found: warn
