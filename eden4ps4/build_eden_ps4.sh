@@ -64,6 +64,19 @@ if old_concept not in s:
 p.write_text(s.replace(old_concept, new_concept))
 PY
 
+# OpenOrbis libc++ also lacks the C++20 <ranges> header. Eden only uses
+# ranges::find here, which is equivalent to std::find over the span iterators.
+python3 - <<'PY'
+from pathlib import Path
+p = Path("src/common/fs/fs_util.cpp")
+s = p.read_text()
+if "#include <ranges>" not in s or "std::ranges::find" not in s:
+    raise SystemExit("Eden fs_util ranges usage changed; refusing an unverified patch")
+s = s.replace("#include <ranges>\n", "")
+s = s.replace("std::ranges::find(buffer, u8{0})", "std::find(buffer.begin(), buffer.end(), u8{0})")
+p.write_text(s)
+PY
+
 # Eden's PS4 branch links the driver by the conventional name "vulkan_radeon".
 # Put the matched SDK bundle's archive in the OpenOrbis library search path.
 ln -sf "$MESA_VK" "$OO_PS4_TOOLCHAIN/lib/libvulkan_radeon.a"
