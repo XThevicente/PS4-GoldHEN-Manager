@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""PS4 GoldHEN Manager Companion Server v0.2.1
+"""PS4 GoldHEN Companion Server v0.3.0
 
-LAN-only companion endpoint for a PS4 homebrew client.
-No external services are required.
+LAN-only companion endpoint for the PS4 GoldHEN Companion homebrew.
 """
 from __future__ import annotations
 
@@ -21,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 APP_NAME = "PS4 GoldHEN Manager"
 PROTOCOL = "ps4gh-companion/1"
+APP_VERSION = "0.3.0"
 HTTP_PORT = 8787
 DISCOVERY_PORT = 8786
 OFFER_MAGIC = "PS4GH_OFFER_V1"
@@ -64,7 +64,10 @@ class CompanionState:
     paired_device: str | None = None
     last_seen: float | None = None
     ps4_firmware: str | None = None
-    app_version: str = "0.2.1"
+    app_version: str = APP_VERSION
+    command_seq: int = 0
+    pending_command: dict | None = None
+    last_ack: dict | None = None
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
@@ -78,10 +81,14 @@ class CompanionService:
         self.state_path = app_data_dir() / "companion.json"
         self.state = self._load_state()
         self.state.pair_code = f"{secrets.randbelow(1_000_000):06d}"
+        self.state.app_version = APP_VERSION
+        self.state.pending_command = None
+        self.state.last_ack = None
         self.state.save(self.state_path)
         self._stop = threading.Event()
         self._http: ThreadingHTTPServer | None = None
         self._threads: list[threading.Thread] = []
+        self._lock = threading.RLock()
 
     def _load_state(self) -> CompanionState:
         try:
@@ -92,16 +99,40 @@ class CompanionService:
                 paired_device=raw.get("paired_device"),
                 last_seen=raw.get("last_seen"),
                 ps4_firmware=raw.get("ps4_firmware"),
-                app_version="0.2.1",
+                app_version=APP_VERSION,
+                command_seq=int(raw.get("command_seq") or 0),
             )
         except Exception:
             return CompanionState(pair_code="000000")
+
+    def queue_command(self, name: str, **payload) -> dict:
+        with self._lock:
+            self.state.command_seq += 1
+            cmd = {
+                "id": self.state.command_seq,
+                "name": str(name)[:32],
+                "created_at": time.time(),
+            }
+            cmd.update(payload)
+            self.state.pending_command = cmd
+            self.state.last_ack = None
+            self.state.save(self.state_path)
+            return dict(cmd)
+
+    def is_online(self, max_age: float = 5.0) -> bool:
+        with self._lock:
+            return bool(self.state.last_seen and time.time() - self.state.last_seen <= max_age)
+
+    def _touch(self) -> None:
+        with self._lock:
+            self.state.last_seen = time.time()
+            self.state.save(self.state_path)
 
     def _handler(self):
         service = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "PS4GHCompanion/0.2.1"
+            server_version = "PS4GHCompanion/0.3.0"
 
             def log_message(self, fmt, *args):
                 print(f"[HTTP] {self.address_string()} - {fmt % args}")
@@ -116,58 +147,90 @@ class CompanionService:
                 self.wfile.write(data)
 
             def _authorized(self) -> bool:
-                token = service.state.token
+                with service._lock:
+                    token = service.state.token
                 if not token:
                     return False
                 auth = self.headers.get("Authorization", "")
-                return auth == f"Bearer {token}"
+                return secrets.compare_digest(auth, f"Bearer {token}")
 
             def do_GET(self):
                 parsed = urlparse(self.path)
                 qs = parse_qs(parsed.query)
 
                 if parsed.path == "/api/v1/ping":
+                    with service._lock:
+                        paired = bool(service.state.token)
                     return self._json(HTTPStatus.OK, {
                         "ok": True,
                         "protocol": PROTOCOL,
                         "server": APP_NAME,
-                        "version": service.state.app_version,
+                        "version": APP_VERSION,
                         "ip": local_ipv4(),
                         "port": service.http_port,
-                        "paired": bool(service.state.token),
+                        "paired": paired,
                     })
 
                 if parsed.path == "/api/v1/pair":
                     code = (qs.get("code") or [""])[0]
                     device = (qs.get("device") or ["PS4"])[0][:64]
-                    if not secrets.compare_digest(code, service.state.pair_code):
-                        return self._json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "bad_pair_code"})
-                    if not service.state.token:
-                        service.state.token = secrets.token_urlsafe(24)
-                    service.state.paired_device = device
-                    service.state.last_seen = time.time()
-                    service.state.save(service.state_path)
+                    with service._lock:
+                        if not secrets.compare_digest(code, service.state.pair_code):
+                            return self._json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "bad_pair_code"})
+                        if not service.state.token:
+                            service.state.token = secrets.token_urlsafe(24)
+                        service.state.paired_device = device
+                        service.state.last_seen = time.time()
+                        service.state.save(service.state_path)
+                        token = service.state.token
                     return self._json(HTTPStatus.OK, {
                         "ok": True,
                         "protocol": PROTOCOL,
-                        "token": service.state.token,
-                        "device": service.state.paired_device,
+                        "token": token,
+                        "device": device,
                     })
 
-                if parsed.path == "/api/v1/status":
+                if parsed.path in ("/api/v1/status", "/api/v1/poll"):
                     if not self._authorized():
                         return self._json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
-                    service.state.last_seen = time.time()
-                    service.state.save(service.state_path)
-                    return self._json(HTTPStatus.OK, {
-                        "ok": True,
-                        "protocol": PROTOCOL,
-                        "server": APP_NAME,
-                        "version": service.state.app_version,
-                        "paired_device": service.state.paired_device,
-                        "last_seen": service.state.last_seen,
-                        "capabilities": ["ping", "pair", "status", "events"],
-                    })
+                    service._touch()
+                    with service._lock:
+                        payload = {
+                            "ok": True,
+                            "protocol": PROTOCOL,
+                            "server": APP_NAME,
+                            "version": APP_VERSION,
+                            "paired_device": service.state.paired_device,
+                            "last_seen": service.state.last_seen,
+                            "online": True,
+                            "capabilities": ["ping", "pair", "status", "poll", "ack", "commands"],
+                        }
+                        if parsed.path == "/api/v1/poll":
+                            payload["command"] = service.state.pending_command
+                    return self._json(HTTPStatus.OK, payload)
+
+                if parsed.path == "/api/v1/ack":
+                    if not self._authorized():
+                        return self._json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+                    try:
+                        cmd_id = int((qs.get("id") or ["0"])[0])
+                    except ValueError:
+                        cmd_id = 0
+                    result = (qs.get("result") or ["ok"])[0][:32]
+                    service._touch()
+                    with service._lock:
+                        pending = service.state.pending_command
+                        if pending and int(pending.get("id", 0)) == cmd_id:
+                            service.state.last_ack = {
+                                "id": cmd_id,
+                                "name": pending.get("name"),
+                                "result": result,
+                                "time": time.time(),
+                            }
+                            service.state.pending_command = None
+                            service.state.save(service.state_path)
+                            return self._json(HTTPStatus.OK, {"ok": True, "acked": cmd_id})
+                    return self._json(HTTPStatus.CONFLICT, {"ok": False, "error": "command_mismatch"})
 
                 return self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
 
@@ -182,10 +245,11 @@ class CompanionService:
                     payload = json.loads(self.rfile.read(length) or b"{}")
                 except Exception:
                     return self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid_json"})
-                service.state.last_seen = time.time()
-                if isinstance(payload, dict) and isinstance(payload.get("firmware"), str):
-                    service.state.ps4_firmware = payload["firmware"][:32]
-                service.state.save(service.state_path)
+                service._touch()
+                with service._lock:
+                    if isinstance(payload, dict) and isinstance(payload.get("firmware"), str):
+                        service.state.ps4_firmware = payload["firmware"][:32]
+                    service.state.save(service.state_path)
                 print("[PS4 EVENT]", json.dumps(payload, ensure_ascii=False))
                 return self._json(HTTPStatus.OK, {"ok": True})
 
@@ -195,28 +259,18 @@ class CompanionService:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
         while not self._stop.is_set():
             ip = local_ipv4()
             payload = f"{OFFER_MAGIC}|{ip}|{self.http_port}|{socket.gethostname()}".encode("ascii", "ignore")
-
             targets = [("255.255.255.255", self.discovery_port)]
             parts = ip.split(".")
             if len(parts) == 4 and all(p.isdigit() for p in parts):
-                # Most home LANs use /24. Sending this in addition to the limited
-                # broadcast fixes Windows/router combinations that drop 255.255.255.255.
                 targets.append((".".join(parts[:3] + ["255"]), self.discovery_port))
-
-            sent = set()
-            for target in targets:
-                if target in sent:
-                    continue
-                sent.add(target)
+            for target in dict.fromkeys(targets):
                 try:
                     s.sendto(payload, target)
                 except OSError:
                     pass
-
             self._stop.wait(0.75)
         s.close()
 
@@ -227,7 +281,7 @@ class CompanionService:
         self._threads = [t_http, t_udp]
         for t in self._threads:
             t.start()
-        print(f"{APP_NAME} Companion v{self.state.app_version}")
+        print(f"{APP_NAME} Companion v{APP_VERSION}")
         print(f"HTTP:      http://{local_ipv4()}:{self.http_port}")
         print(f"Discovery: UDP broadcast :{self.discovery_port}")
         print(f"PAIR CODE: {self.state.pair_code}")
