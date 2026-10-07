@@ -19,6 +19,23 @@ fi
 
 cd "$EDEN_DIR"
 
+# Fix the PS4 FFmpeg cross flags for the current SDK-bundle layout.
+# The upstream branch still points FFmpeg at <sdk>/usr/include, but this OpenOrbis bundle
+# exposes headers directly at <sdk>/include. Passing the directory itself as a compiler
+# argument also makes clang treat it as an input file, so use an explicit -I.
+python3 - <<'PY'
+from pathlib import Path
+p = Path("externals/ffmpeg/CMakeLists.txt")
+s = p.read_text()
+old_c = "--extra-cflags=${CMAKE_SYSROOT}/usr/include"
+old_cxx = "--extra-cxxflags=${CMAKE_SYSROOT}/usr/include"
+new_c = "--extra-cflags=-I${CMAKE_SYSROOT}/include"
+new_cxx = "--extra-cxxflags=-I${CMAKE_SYSROOT}/include"
+if old_c not in s or old_cxx not in s:
+    raise SystemExit("Eden FFmpeg OpenOrbis flag layout changed; refusing an unverified patch")
+p.write_text(s.replace(old_c, new_c).replace(old_cxx, new_cxx))
+PY
+
 # Eden's PS4 branch links the driver by the conventional name "vulkan_radeon".
 # Put the matched SDK bundle's archive in the OpenOrbis library search path.
 ln -sf "$MESA_VK" "$OO_PS4_TOOLCHAIN/lib/libvulkan_radeon.a"
