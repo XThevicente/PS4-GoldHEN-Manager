@@ -3,7 +3,7 @@ name: Build PS4 Companion PKG
 on:
   push:
     branches:
-      - feature/ps4-companion-v0.1
+      - feature/ps4-companion-v0.2
     paths:
       - 'companion/ps4_app/**'
       - '.github/workflows/build-ps4-companion.yml'
@@ -37,5 +37,5 @@ jobs:
       - name: Upload PKG
         uses: actions/upload-artifact@v4
         with:
-          name: PS4_GoldHEN_Companion_v0.1_PKG
+          name: PS4_GoldHEN_Companion_v0.2_PKG
           path: companion/ps4_app/*.pkg
