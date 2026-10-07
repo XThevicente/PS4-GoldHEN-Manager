@@ -33,7 +33,16 @@ new_c = "--extra-cflags=-I${CMAKE_SYSROOT}/include"
 new_cxx = "--extra-cxxflags=-I${CMAKE_SYSROOT}/include"
 if old_c not in s or old_cxx not in s:
     raise SystemExit("Eden FFmpeg OpenOrbis flag layout changed; refusing an unverified patch")
-p.write_text(s.replace(old_c, new_c).replace(old_cxx, new_cxx))
+patched = s.replace(old_c, new_c).replace(old_cxx, new_cxx)
+old_libs = """list(APPEND FFmpeg_CROSS_COMPILE_LIBS
+        -lkernel"""
+new_libs = """list(APPEND FFmpeg_CROSS_COMPILE_LIBS
+        ${CMAKE_SYSROOT}/lib/crt1.o
+        -lc
+        -lkernel"""
+if old_libs not in patched:
+    raise SystemExit("Eden FFmpeg OpenOrbis library block changed; refusing an unverified patch")
+p.write_text(patched.replace(old_libs, new_libs))
 PY
 
 # Eden's PS4 branch links the driver by the conventional name "vulkan_radeon".
@@ -61,7 +70,7 @@ set(CMAKE_CXX_FLAGS "\${ORBIS_COMMON}")
 
 set(ORBIS_LINK "-m elf_x86_64 -pie --script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld --eh-frame-hdr --no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan")
 # FFmpeg uses the compiler driver for its configure link probes, so these flags must be clang-friendly.
-set(ORBIS_DRIVER_LINK "-fuse-ld=lld -Wl,-m,elf_x86_64 -Wl,-pie -Wl,--script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld -Wl,--eh-frame-hdr -Wl,--no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan")
+set(ORBIS_DRIVER_LINK "--target=x86_64-pc-freebsd12-elf -nostdlib -fuse-ld=lld -Wl,-m,elf_x86_64 -Wl,-pie -Wl,--script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld -Wl,--eh-frame-hdr -Wl,--no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan")
 set(CMAKE_EXE_LINKER_FLAGS "\${ORBIS_DRIVER_LINK}")
 set(CMAKE_C_LINK_FLAGS "\${ORBIS_DRIVER_LINK}")
 set(CMAKE_CXX_LINK_FLAGS "\${ORBIS_DRIVER_LINK}")
