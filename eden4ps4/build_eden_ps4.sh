@@ -53,8 +53,8 @@ set(CMAKE_AR llvm-ar)
 set(CMAKE_RANLIB llvm-ranlib)
 set(CMAKE_LINKER ld.lld)
 
-set(CMAKE_C_LINK_EXECUTABLE "<CMAKE_LINKER> <CMAKE_C_LINK_FLAGS> <OBJECTS> -o <TARGET> -lc -lkernel -lSceUserService -lSceSysmodule -lSceNet -lSceLibcInternal $OO_PS4_TOOLCHAIN/lib/crt1.o <LINK_LIBRARIES> -Wl,--whole-archive $COMPAT_LIB -Wl,--no-whole-archive")
-set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_LINKER> <CMAKE_CXX_LINK_FLAGS> <OBJECTS> -o <TARGET> -lc -lkernel -lc++ -lSceUserService -lSceSysmodule -lSceNet -lSceLibcInternal $OO_PS4_TOOLCHAIN/lib/crt1.o <LINK_LIBRARIES> -Wl,--whole-archive $COMPAT_LIB -Wl,--no-whole-archive")
+set(CMAKE_C_LINK_EXECUTABLE "<CMAKE_LINKER> -m elf_x86_64 -pie --script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld --eh-frame-hdr --no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan <OBJECTS> -o <TARGET> $OO_PS4_TOOLCHAIN/lib/crt1.o <LINK_LIBRARIES> --whole-archive $COMPAT_LIB --no-whole-archive -lc -lkernel -lSceUserService -lSceSysmodule -lSceNet -lSceLibcInternal")
+set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_LINKER> -m elf_x86_64 -pie --script=$ORBIS_SDK_BUNDLE/toolchain/orbis-tls.ld --eh-frame-hdr --no-rosegment -L$OO_PS4_TOOLCHAIN/lib -L$ORBIS_MESA_BUILD/src/amd/vulkan <OBJECTS> -o <TARGET> $OO_PS4_TOOLCHAIN/lib/crt1.o <LINK_LIBRARIES> --whole-archive $COMPAT_LIB --no-whole-archive -lc++ -lc -lkernel -lSceUserService -lSceSysmodule -lSceNet -lSceLibcInternal")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
