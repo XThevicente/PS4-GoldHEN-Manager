@@ -1,0 +1,22 @@
+name: ps4_goldhen_mobile
+description: PS4 GoldHEN Manager mobile - direct LAN client for Android and iOS
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ftpconnect: ^3.0.0
+  file_picker: ^13.1.0
+  path_provider: ^2.1.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
