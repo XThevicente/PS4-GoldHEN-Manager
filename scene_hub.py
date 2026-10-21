@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 
 HUB_URL = "https://itrsr62yvx.zite.so"
 HUB_SITEMAP = HUB_URL + "/sitemap.xml"
+NEWS_JSON = "https://raw.githubusercontent.com/XThevicente/PS4-GoldHEN-Manager/main/scene_news.json"
 RELEASES_URL = "https://github.com/XThevicente/PS4-GoldHEN-Manager/releases"
 RELEASES_ATOM = RELEASES_URL + ".atom"
 NEWS_PATH = re.compile(r"^/noticias/[0-9a-f-]{36}\.html$")
@@ -26,7 +27,7 @@ RELEASE_PATH = re.compile(
 MAX_SITEMAP_BYTES = 240_000
 MAX_ARTICLE_BYTES = 280_000
 MAX_ATOM_BYTES = 350_000
-MAX_NEWS = 10
+MAX_NEWS = 20
 MAX_RELEASES = 6
 
 
@@ -54,13 +55,16 @@ def _fetch(url: str, limit: int, *, timeout: int = 6) -> bytes:
 
 def _approved_news_link(url: str) -> bool:
     p = urllib.parse.urlsplit(url)
-    return (
-        p.scheme == "https"
-        and p.netloc == "itrsr62yvx.zite.so"
-        and bool(NEWS_PATH.fullmatch(p.path))
-        and not p.query
-        and not p.fragment
-    )
+    if p.scheme != "https" or p.netloc != "itrsr62yvx.zite.so" or p.fragment:
+        return False
+    if NEWS_PATH.fullmatch(p.path) and not p.query:
+        return True
+    if p.path == "/":
+        params = urllib.parse.parse_qs(p.query, keep_blank_values=True)
+        return set(params) == {"news"} and len(params["news"]) == 1 and bool(
+            re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", params["news"][0])
+        )
+    return False
 
 
 def _approved_release_link(url: str) -> bool:
@@ -109,6 +113,39 @@ class _Metadata(HTMLParser):
             self.title += text
         elif self._in_h1:
             self.heading += text
+
+
+def parse_news_json(raw: bytes) -> list[dict[str, str]]:
+    """Noticias aprobadas de Zite espejadas en GitHub; los enlaces no aceptan terceros."""
+    obj = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(obj, dict) or obj.get("schema") != 1:
+        raise ValueError("Formato de feed no reconocido")
+    rows = obj.get("news")
+    if not isinstance(rows, list):
+        raise ValueError("El feed de noticias no contiene lista")
+    out: list[dict[str, str]] = []
+    urls: set[str] = set()
+    for row in rows[:200]:
+        if not isinstance(row, dict):
+            continue
+        url, title = row.get("url"), row.get("title")
+        if not isinstance(url, str) or not _approved_news_link(url):
+            continue
+        if not isinstance(title, str) or not 5 <= len(title.strip()) <= 150:
+            continue
+        if url in urls:
+            continue
+        urls.add(url)
+        date = str(row.get("date") or "")
+        out.append({
+            "url": url,
+            "title": title.strip(),
+            "description": str(row.get("description") or "")[:260],
+            "date": date if re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", date) else "",
+        })
+        if len(out) >= MAX_NEWS:
+            break
+    return out
 
 
 def parse_sitemap(xml_bytes: bytes) -> list[str]:
@@ -217,16 +254,22 @@ def fetch_scene_bundle(cache_path: Path) -> dict[str, Any]:
     releases: list[dict[str, str]] = []
     problems: list[str] = []
     try:
-        urls = parse_sitemap(_fetch(HUB_SITEMAP, MAX_SITEMAP_BYTES))
-        for url in urls:
-            try:
-                news.append(parse_article(_fetch(url, MAX_ARTICLE_BYTES), url))
-            except (OSError, ValueError, ET.ParseError, UnicodeError):
-                continue
-        if not news:
-            problems.append("No se pudieron leer las noticias del índice público")
-    except (OSError, ValueError, ET.ParseError, UnicodeError) as exc:
-        problems.append("Noticias: " + type(exc).__name__)
+        news = parse_news_json(_fetch(NEWS_JSON, MAX_SITEMAP_BYTES))
+    except (OSError, ValueError, UnicodeError) as exc:
+        problems.append("Feed de noticias: " + type(exc).__name__)
+    # Respaldo: extrae noticias indexadas directamente de la web.
+    if not news:
+        try:
+            urls = parse_sitemap(_fetch(HUB_SITEMAP, MAX_SITEMAP_BYTES))
+            for url in urls:
+                try:
+                    news.append(parse_article(_fetch(url, MAX_ARTICLE_BYTES), url))
+                except (OSError, ValueError, ET.ParseError, UnicodeError):
+                    continue
+            if not news:
+                problems.append("No se pudieron leer noticias públicas")
+        except (OSError, ValueError, ET.ParseError, UnicodeError) as exc:
+            problems.append("Sitemap: " + type(exc).__name__)
     try:
         releases = parse_atom(_fetch(RELEASES_ATOM, MAX_ATOM_BYTES, timeout=8))
         if not releases:
