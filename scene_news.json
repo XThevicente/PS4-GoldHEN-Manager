@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "site": "https://itrsr62yvx.zite.so",
+  "news": [
+    {
+      "title": "Apollo Save Tool 2.4.0 llega a PS4 con soporte para tarjetas de Dreamcast",
+      "description": "La actualización del 17 de octubre incorpora tarjetas VMU de Dreamcast, Apollo Patch Engine 3.0 y numerosas mejoras en partidas guardadas.",
+      "section": "PS4",
+      "date": "2026-10-17",
+      "url": "https://itrsr62yvx.zite.so/?news=f88361cd-f63e-4597-b251-f06fb67ef15a"
+    },
+    {
+      "title": "PS5LM Plus demuestra modelos de inteligencia artificial funcionando en la GPU de PS5",
+      "description": "La scene experimenta con llama.cpp y Vulkan para ejecutar modelos de IA localmente en PS5. Las cifras publicadas son pruebas de desarrollo, no rendimientos garantizados.",
+      "section": "PS5",
+      "date": "2026-10-17",
+      "url": "https://itrsr62yvx.zite.so/?news=5856c9b1-76aa-4e82-b69a-26dee9c660a4"
+    },
+    {
+      "title": "HyperHEN v0.9.2 reúne nuevas herramientas homebrew para PS5",
+      "description": "El lanzamiento del 14 de octubre integra perfiles exactos de firmware, HyperCore, Toolbox y servicios de depuración, todavía con limitaciones de compatibilidad.",
+      "section": "PS5",
+      "date": "2026-10-14",
+      "url": "https://itrsr62yvx.zite.so/?news=0829670d-93be-4444-a7d9-e635d1bcfa16"
+    },
+    {
+      "title": "pLinux5-NG abre una vía experimental para Linux en PS5 con firmware alto",
+      "description": "El repositorio de pLabs5 adapta un cargador de Linux al trabajo de Byepervisor Reborn. Sus desarrolladores solo consideran compatible por ahora el firmware 13.20.",
+      "section": "PS5",
+      "date": "2026-10-14",
+      "url": "https://itrsr62yvx.zite.so/?news=bb52deff-7b16-4e75-8514-5ad1a18928ff"
+    },
+    {
+      "title": "Byepervisor Reborn: avance importante en la investigación del hipervisor de PS5",
+      "description": "El proyecto publicado el 13 de octubre estudia versiones hasta 13.60, pero sus propios autores advierten de que no es un jailbreak completo para usuarios finales.",
+      "section": "PS5",
+      "date": "2026-10-13",
+      "url": "https://itrsr62yvx.zite.so/?news=2ef8a6d2-302b-4256-a55d-31c6f9d38e3b"
+    },
+    {
+      "title": "PS4 GoldHEN Manager v1.0.0 disponible para Windows",
+      "description": "Primera versión pública del gestor independiente para PS4: FTP, detección de consola y utilidades de gestión desde el PC.",
+      "section": "Nuestro proyecto",
+      "date": "2026-10-06",
+      "url": "https://itrsr62yvx.zite.so/?news=a9575750-cb0e-45b7-b65f-6a591b93b5a8"
+    },
+    {
+      "title": "GoldHEN: el proyecto homebrew para PS4",
+      "description": "Fuente oficial de versiones, documentación y novedades del proyecto GoldHEN, desarrollado para PlayStation 4.",
+      "section": "PS4",
+      "date": "",
+      "url": "https://itrsr62yvx.zite.so/?news=220b4028-9170-41be-90a6-5ca1ef55e8ed"
+    },
+    {
+      "title": "Scene de PS5: sigue etaHEN desde sus fuentes oficiales",
+      "description": "Recursos y novedades homebrew para PS5. Diferenciamos etaHEN en PS5 de GoldHEN en PS4.",
+      "section": "PS5",
+      "date": "",
+      "url": "https://itrsr62yvx.zite.so/?news=dba3b3c6-445e-4e2d-9eab-c0bc2236c7c2"
+    }
+  ]
+}
