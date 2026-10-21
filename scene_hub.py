@@ -141,7 +141,7 @@ def parse_news_json(raw: bytes) -> list[dict[str, str]]:
             "url": url,
             "title": title.strip(),
             "description": str(row.get("description") or "")[:260],
-            "date": date if re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", date) else "",
+            "date": date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) else "",
         })
         if len(out) >= MAX_NEWS:
             break
