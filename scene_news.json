@@ -3,6 +3,20 @@
   "site": "https://itrsr62yvx.zite.so",
   "news": [
     {
+      "title": "ShadowMountPlus 1.7beta7 corrige la recuperación USB en PS5",
+      "description": "La beta del 21 de octubre corrige la recuperación del sandbox USB tras retirar el dispositivo; no supone compatibilidad universal.",
+      "section": "PS5",
+      "date": "2026-10-21",
+      "url": "https://itrsr62yvx.zite.so/?news=c991a02c-b242-4e23-b2cf-c5b4f0ff5326"
+    },
+    {
+      "title": "PatchDL 0.3.3 comprueba el espacio disponible antes de descargar actualizaciones en PS5",
+      "description": "La versión del 20 de octubre verifica espacio de descarga e instalación; el autor indica pruebas en PS5 con firmware 11.60.",
+      "section": "PS5",
+      "date": "2026-10-20",
+      "url": "https://itrsr62yvx.zite.so/?news=816e4cc8-9209-49c9-a217-a09c39096235"
+    },
+    {
       "title": "Apollo Save Tool 2.4.0 llega a PS4 con soporte para tarjetas de Dreamcast",
       "description": "La actualización del 17 de octubre incorpora tarjetas VMU de Dreamcast, Apollo Patch Engine 3.0 y numerosas mejoras en partidas guardadas.",
       "section": "PS4",
@@ -40,7 +54,7 @@
     {
       "title": "PS4 GoldHEN Manager v1.0.0 disponible para Windows",
       "description": "Primera versión pública del gestor independiente para PS4: FTP, detección de consola y utilidades de gestión desde el PC.",
-      "section": "Nuestro proyecto",
+      "section": "PS4",
       "date": "2026-10-06",
       "url": "https://itrsr62yvx.zite.so/?news=a9575750-cb0e-45b7-b65f-6a591b93b5a8"
     },
