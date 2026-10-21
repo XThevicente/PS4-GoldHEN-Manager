@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 import zipfile
 import tempfile
 import shutil
@@ -27,8 +28,10 @@ import tkinter as tk
 from tkinter import END, BOTH, LEFT, RIGHT, X, Y, filedialog, messagebox, simpledialog
 from tkinter import ttk
 
+from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
+
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0-beta.1"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -1059,15 +1062,173 @@ class PS4ManagerApp(tk.Tk):
         workspace=ttk.Frame(self); workspace.pack(fill=BOTH,expand=True,padx=14)
         nav=ttk.Frame(workspace,style="Card.TFrame",padding=(5,8)); nav.pack(side=LEFT,fill=Y,padx=(0,8))
         self.notebook=ttk.Notebook(workspace, style="Hidden.TNotebook"); self.notebook.pack(side=LEFT,fill=BOTH,expand=True)
-        self.files_tab=ttk.Frame(self.notebook); self.pkg_tab=ttk.Frame(self.notebook); self.library_tab=ttk.Frame(self.notebook); self.firmware_tab=ttk.Frame(self.notebook); self.tools_tab=ttk.Frame(self.notebook); self.console_tab=ttk.Frame(self.notebook); self.cheats_tab=ttk.Frame(self.notebook)
-        tabs=((self.files_tab,"Archivos","📁  Archivos"),(self.pkg_tab,"Instalador PKG","📦  Instalador PKG"),(self.library_tab,"Biblioteca","🎮  Biblioteca"),(self.firmware_tab,"Firmware","🛡️  Firmware"),(self.tools_tab,"Herramientas GoldHEN","🔧  Herramientas"),(self.console_tab,"Mi PS4","▣  Mi PS4"),(self.cheats_tab,"Cheats & Mods","🎮  Cheats & Mods"))
+        self.files_tab=ttk.Frame(self.notebook); self.pkg_tab=ttk.Frame(self.notebook); self.library_tab=ttk.Frame(self.notebook); self.firmware_tab=ttk.Frame(self.notebook); self.tools_tab=ttk.Frame(self.notebook); self.console_tab=ttk.Frame(self.notebook); self.cheats_tab=ttk.Frame(self.notebook); self.scene_tab=ttk.Frame(self.notebook)
+        tabs=((self.files_tab,"Archivos","📁  Archivos"),(self.pkg_tab,"Instalador PKG","📦  Instalador PKG"),(self.library_tab,"Biblioteca","🎮  Biblioteca"),(self.firmware_tab,"Firmware","🛡️  Firmware"),(self.tools_tab,"Herramientas GoldHEN","🔧  Herramientas"),(self.console_tab,"Mi PS4","▣  Mi PS4"),(self.cheats_tab,"Cheats & Mods","🎮  Cheats & Mods"),(self.scene_tab,"Scene Hub","📰  Scene Hub"))
         for i,(frame,title,navtitle) in enumerate(tabs):
             self.notebook.add(frame,text=title); ttk.Button(nav,text=navtitle,style="Nav.TButton",width=20,command=lambda n=i:self.notebook.select(n)).pack(fill=X,pady=3)
-        self._build_files_tab(); self._build_pkg_tab(); self._build_library_tab(); self._build_firmware_tab(); self._build_tools_tab(); self._build_console_tab(); self._build_cheats_tab()
+        self._build_files_tab(); self._build_pkg_tab(); self._build_library_tab(); self._build_firmware_tab(); self._build_tools_tab(); self._build_console_tab(); self._build_cheats_tab(); self._build_scene_hub_tab()
         bottom=ttk.Frame(self,padding=(14,7)); bottom.pack(fill=X)
         self.progress=ttk.Progressbar(bottom,mode="determinate",maximum=100); self.progress.pack(fill=X)
         self.status_var=tk.StringVar(value="Listo"); ttk.Label(bottom,textvariable=self.status_var,style="Sub.TLabel").pack(side=LEFT,pady=(5,0))
         ttk.Label(bottom,text=f"PS4 GoldHEN Manager v{APP_VERSION}",style="Sub.TLabel").pack(side=RIGHT,pady=(5,0))
+
+    # ---------- Scene Hub: noticias y versiones (sin modificar servicios PS4) ----------
+    def _build_scene_hub_tab(self) -> None:
+        """Noticias y versiones oficiales sin bloquear la interfaz Tkinter."""
+        self._scene_loading = False
+        self._scene_news = []
+        self._scene_releases = []
+        page = ttk.Frame(self.scene_tab, padding=(8, 9))
+        page.pack(fill=BOTH, expand=True)
+        head = ttk.Frame(page, style="Card.TFrame", padding=(16, 12))
+        head.pack(fill=X, pady=(0, 9))
+        ttk.Label(head, text="GOLDHEN SCENE HUB",
+                  font=("Segoe UI", 17, "bold"), style="Card.TLabel").pack(side=LEFT)
+        ttk.Label(head, text="Noticias PS4/PS5 · comunidad · versiones",
+                  style="Card.TLabel").pack(side=LEFT, padx=(18, 0))
+        ttk.Button(head, text="Abrir el foro", style="Accent.TButton",
+                   command=lambda: webbrowser.open_new_tab(HUB_URL)).pack(side=RIGHT)
+        ttk.Button(head, text="Actualizar", command=self.scene_refresh).pack(
+            side=RIGHT, padx=(0, 9))
+
+        bar = ttk.Frame(page, style="Panel.TFrame", padding=(12, 10))
+        bar.pack(fill=X, pady=(0, 9))
+        self.scene_status_var = tk.StringVar(value="Preparando noticias…")
+        ttk.Label(bar, textvariable=self.scene_status_var,
+                  style="Panel.TLabel", wraplength=1100).pack(fill=X)
+
+        news_card = ttk.Frame(page, style="Card.TFrame", padding=12)
+        news_card.pack(fill=BOTH, expand=True, pady=(0, 9))
+        ttk.Label(news_card, text="NOTICIAS DEL PORTAL",
+                  font=("Segoe UI", 12, "bold"), style="Card.TLabel").pack(
+            anchor="w", pady=(0, 8))
+        news_body = ttk.Frame(news_card, style="Card.TFrame")
+        news_body.pack(fill=BOTH, expand=True)
+        self.scene_news_tree = ttk.Treeview(
+            news_body, columns=("date", "title"), show="headings",
+            selectmode="browse", height=9)
+        for key, heading, width in (
+            ("date", "Fecha", 120), ("title", "Titular", 820)
+        ):
+            self.scene_news_tree.heading(key, text=heading)
+            self.scene_news_tree.column(key, width=width, stretch=key == "title")
+        ns = ttk.Scrollbar(news_body, orient="vertical",
+                           command=self.scene_news_tree.yview)
+        self.scene_news_tree.configure(yscrollcommand=ns.set)
+        self.scene_news_tree.pack(side=LEFT, fill=BOTH, expand=True)
+        ns.pack(side=RIGHT, fill=Y)
+        self.scene_news_tree.bind("<Double-1>", lambda _e: self.scene_open_news())
+        actions = ttk.Frame(news_card, style="Card.TFrame")
+        actions.pack(fill=X, pady=(8, 0))
+        ttk.Button(actions, text="Leer seleccionada",
+                   command=self.scene_open_news).pack(side=LEFT)
+        ttk.Button(actions, text="Todas las noticias y comunidad",
+                   command=lambda: webbrowser.open_new_tab(HUB_URL)).pack(
+            side=LEFT, padx=(8, 0))
+
+        releases_card = ttk.Frame(page, style="Card.TFrame", padding=12)
+        releases_card.pack(fill=BOTH, expand=True)
+        ttk.Label(releases_card, text="VERSIONES OFICIALES DE GOLDHEN MANAGER",
+                  font=("Segoe UI", 12, "bold"), style="Card.TLabel").pack(
+            anchor="w", pady=(0, 8))
+        rbody = ttk.Frame(releases_card, style="Card.TFrame")
+        rbody.pack(fill=BOTH, expand=True)
+        self.scene_release_tree = ttk.Treeview(
+            rbody, columns=("date", "version", "name"), show="headings",
+            selectmode="browse", height=5)
+        for key, heading, width in (
+            ("date", "Fecha", 120), ("version", "Versión", 150),
+            ("name", "Lanzamiento", 750),
+        ):
+            self.scene_release_tree.heading(key, text=heading)
+            self.scene_release_tree.column(key, width=width, stretch=key == "name")
+        rs = ttk.Scrollbar(rbody, orient="vertical",
+                           command=self.scene_release_tree.yview)
+        self.scene_release_tree.configure(yscrollcommand=rs.set)
+        self.scene_release_tree.pack(side=LEFT, fill=BOTH, expand=True)
+        rs.pack(side=RIGHT, fill=Y)
+        self.scene_release_tree.bind(
+            "<Double-1>", lambda _e: self.scene_open_release())
+        ractions = ttk.Frame(releases_card, style="Card.TFrame")
+        ractions.pack(fill=X, pady=(8, 0))
+        ttk.Button(ractions, text="Abrir versión seleccionada",
+                   command=self.scene_open_release).pack(side=LEFT)
+        ttk.Button(ractions, text="Historial de versiones",
+                   command=lambda: webbrowser.open_new_tab(RELEASES_URL)).pack(
+            side=LEFT, padx=(8, 0))
+
+        self.after(1200, self.scene_refresh)
+        self.after(30 * 60 * 1000, self._scene_periodic_refresh)
+
+    def _scene_periodic_refresh(self) -> None:
+        if self.winfo_exists():
+            self.scene_refresh()
+            self.after(30 * 60 * 1000, self._scene_periodic_refresh)
+
+    def scene_refresh(self) -> None:
+        if self._scene_loading:
+            return
+        self._scene_loading = True
+        self.scene_status_var.set("Actualizando noticias y versiones en segundo plano…")
+
+        def worker():
+            return fetch_scene_bundle(app_data_dir() / "scene_hub_cache.json")
+
+        def done(bundle):
+            self._scene_loading = False
+            self._scene_news = bundle.get("news", [])
+            self._scene_releases = bundle.get("releases", [])
+            self.scene_news_tree.delete(*self.scene_news_tree.get_children())
+            self.scene_release_tree.delete(*self.scene_release_tree.get_children())
+            for i, item in enumerate(self._scene_news):
+                self.scene_news_tree.insert("", END, iid=str(i), values=(
+                    item.get("date") or "—", item.get("title") or "Noticia"))
+            for i, item in enumerate(self._scene_releases):
+                self.scene_release_tree.insert("", END, iid=str(i), values=(
+                    item.get("date") or "—", item.get("tag") or "—",
+                    item.get("title") or "Lanzamiento"))
+            msg = bundle.get("status") or "Consulta finalizada"
+            if bundle.get("cache_used"):
+                msg += " · mostrando caché sin conexión"
+            if is_update_available(APP_VERSION, self._scene_releases):
+                msg = "NUEVA VERSIÓN ESTABLE DISPONIBLE · " + msg
+                self.status_var.set("Hay una actualización en GitHub")
+            self.scene_status_var.set(
+                f"{len(self._scene_news)} noticias · "
+                f"{len(self._scene_releases)} versiones · {msg}")
+
+        def failed(exc):
+            self._scene_loading = False
+            self.scene_status_var.set(
+                "No se pudo consultar Scene Hub: " + str(exc)[:130])
+
+        self.run_async(worker, on_done=done, on_error=failed)
+
+    def scene_open_news(self) -> None:
+        selection = self.scene_news_tree.selection()
+        if not selection:
+            messagebox.showinfo(APP_NAME, "Selecciona una noticia.")
+            return
+        try:
+            url = self._scene_news[int(selection[0])]["url"]
+        except (IndexError, ValueError, KeyError, TypeError):
+            return
+        from scene_hub import _approved_news_link
+        if _approved_news_link(url):
+            webbrowser.open_new_tab(url)
+
+    def scene_open_release(self) -> None:
+        selection = self.scene_release_tree.selection()
+        if not selection:
+            messagebox.showinfo(APP_NAME, "Selecciona una versión.")
+            return
+        try:
+            url = self._scene_releases[int(selection[0])]["url"]
+        except (IndexError, ValueError, KeyError, TypeError):
+            return
+        from scene_hub import _approved_release_link
+        if _approved_release_link(url):
+            webbrowser.open_new_tab(url)
 
     def _build_files_tab(self) -> None:
         main = ttk.Frame(self.files_tab, padding=(0, 6))
