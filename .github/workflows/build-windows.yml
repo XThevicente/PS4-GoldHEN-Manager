@@ -2,26 +2,33 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
-    branches: [ main ]
+    branches: [main, feature/scene-hub-integration]
     paths:
       - 'ps4_manager.py'
+      - 'scene_hub.py'
+      - 'scene_news.json'
+      - 'tests/**'
       - 'requirements.txt'
       - 'assets/**'
-      - 'RELEASE_NOTES.md'
+      - 'build_windows.bat'
       - '.github/workflows/build-windows.yml'
 
+# Important: this workflow builds an Actions artifact only.
+# It must NEVER silently overwrite the stable v1.0.0 GitHub Release.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -29,31 +36,31 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade -r requirements.txt
 
-      - name: Validate source
-        run: python -m py_compile ps4_manager.py
+      - name: Validate sources
+        run: |
+          python -m py_compile ps4_manager.py scene_hub.py
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          $v = python -c "import ps4_manager; print(ps4_manager.APP_VERSION)"
+          if ($LASTEXITCODE -ne 0 -or !$v) { throw "Cannot determine APP_VERSION" }
+          "MANAGER_VERSION=$v" >> $env:GITHUB_ENV
 
       - name: Build EXE
-        run: >-
-          pyinstaller --noconfirm --clean --onefile --windowed
-          --name PS4_GoldHEN_Manager_v1.0.0
-          --icon assets/ps4_goldhen_manager.ico
-          --add-data "assets/ps4_goldhen_manager.ico;assets"
-          ps4_manager.py
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed `
+            --name "PS4_GoldHEN_Manager_v$env:MANAGER_VERSION" `
+            --icon "assets/ps4_goldhen_manager.ico" `
+            --add-data "assets/ps4_goldhen_manager.ico;assets" `
+            ps4_manager.py
 
-      - name: Upload Actions artifact
+      - name: Upload beta EXE (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: PS4_GoldHEN_Manager_v1.0.0_Windows
-          path: dist/PS4_GoldHEN_Manager_v1.0.0.exe
-
-      - name: Publish GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view v1.0.0 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload v1.0.0 "dist/PS4_GoldHEN_Manager_v1.0.0.exe" --clobber
-          } else {
-            gh release create v1.0.0 "dist/PS4_GoldHEN_Manager_v1.0.0.exe" --title "PS4 GoldHEN Manager v1.0.0" --notes-file RELEASE_NOTES.md --target "${{ github.sha }}"
-          }
+          name: PS4_GoldHEN_Manager_v${{ env.MANAGER_VERSION }}_Windows
+          path: dist/PS4_GoldHEN_Manager_v${{ env.MANAGER_VERSION }}.exe
+          if-no-files-found: error
+          retention-days: 30
