@@ -9,8 +9,13 @@ echo ==============================================
 py -3 -m pip install --upgrade -r requirements.txt
 if errorlevel 1 goto :error
 
+py -3 -m py_compile ps4_manager.py scene_hub.py
+if errorlevel 1 goto :error
+py -3 -m unittest discover -s tests -p "test_*.py" -v
+if errorlevel 1 goto :error
+
 py -3 -m PyInstaller --noconfirm --clean --onefile --windowed ^
-  --name "PS4_GoldHEN_Manager_v1.0.0" ^
+  --name "PS4_GoldHEN_Manager_v1.1.0-beta.1" ^
   --icon "assets\ps4_goldhen_manager.ico" ^
   --add-data "assets\ps4_goldhen_manager.ico;assets" ^
   ps4_manager.py
@@ -18,7 +23,7 @@ if errorlevel 1 goto :error
 
 echo.
 echo Compilacion completada.
-echo EXE: %CD%\dist\PS4_GoldHEN_Manager_v1.0.0.exe
+echo EXE: %CD%\dist\PS4_GoldHEN_Manager_v1.1.0-beta.1.exe
 echo El EXE usa el icono de PS4 GoldHEN Manager y --windowed: no muestra consola ni icono de Python.
 pause
 exit /b 0
