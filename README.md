@@ -32,7 +32,9 @@ No Python installation is required when using the compiled Windows release.
 
 Hay una **nueva beta para Windows** con una pestaña `📰 Scene Hub` que muestra noticias PS4/PS5 del portal, acceso al foro y versiones oficiales de GitHub. La lectura de noticias admite caché sin conexión y las consultas se ejecutan en segundo plano.
 
-**[Descargar la beta desde GitHub Actions](https://github.com/XThevicente/PS4-GoldHEN-Manager/actions/workflows/build-windows.yml)** — abre la ejecución más reciente de `main` y descarga el artefacto `PS4_GoldHEN_Manager_v1.1.0-beta.1_Windows`. GitHub puede requerir iniciar sesión.
+**[Descargar la beta desde GitHub Actions](https://github.com/XThevicente/PS4-GoldHEN-Manager/actions/workflows/build-windows.yml)** — abre la ejecución más reciente de `main` y descarga el artefacto `PS4_GoldHEN_Manager_v1.1.0-beta.2_Windows`. GitHub puede requerir iniciar sesión.
+
+La **beta.2** separa la detección de la PS4 de la sesión FTP. Si Payload, Klog, Debug o RPI responden con FTP desactivado, muestra la consola y sus servicios disponibles. Para transferir archivos, activa FTP en GoldHEN y pulsa **Reintentar FTP**. Se conserva el puerto FTP configurado. [Estados de conexión y prueba en consola](docs/CONNECTION.md).
 
 La release pública **v1.0.0 sigue siendo la estable**. La beta no descarga ni instala actualizaciones automáticamente y debe probarse antes de reemplazar la versión que utilizas habitualmente.
 

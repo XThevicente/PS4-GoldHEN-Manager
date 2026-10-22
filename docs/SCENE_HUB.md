@@ -49,7 +49,7 @@ No incluir datos privados, tokens, cuentas ni URLs de descarga arbitrarias. El l
 3. Prueba la sección Scene Hub conectado y desconectado de Internet.
 4. Comprueba que FTP, PKG, biblioteca, conexión a PS4, consola y cheats siguen operativos.
 
-GitHub Actions genera un artefacto **v1.1.0-beta.1** independiente. Nunca sobrescribe la release estable v1.0.0. La publicación de una nueva release, tras probar la beta, es un paso manual separado.
+GitHub Actions genera un artefacto **v1.1.0-beta.2** independiente. Nunca sobrescribe la release estable v1.0.0. La publicación de una nueva release, tras probar la beta, es un paso manual separado.
 
 ## Limitaciones actuales
 

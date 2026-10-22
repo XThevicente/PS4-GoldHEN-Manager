@@ -31,7 +31,7 @@ from tkinter import ttk
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.1"
+APP_VERSION = "1.1.0-beta.2"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -965,6 +965,9 @@ class PS4ManagerApp(tk.Tk):
         self.configure(bg="#101820")
 
         self.ftp = FTPClient()
+        self.detected_host = ""
+        self._ftp_connecting = False
+        self._connection_epoch = 0
         self.remote_items: dict[str, RemoteItem] = {}
         self.library_rows: list[dict[str, str]] = []
         p = Path(str(self.settings.get("local_path", Path.home()))).expanduser()
@@ -1036,22 +1039,25 @@ class PS4ManagerApp(tk.Tk):
         ttk.Label(header,text="FTP  •  PKG remoto  •  GoldHEN services  •  Payloads  •  Cheats & Mods",style="Card.TLabel").pack(side=LEFT,padx=(18,0),pady=(8,0))
         ttk.Label(header,text=f"v{APP_VERSION}",style="Card.TLabel").pack(side=RIGHT,padx=8)
 
-        conn = ttk.Frame(self, style="Panel.TFrame", padding=(18,12)); conn.pack(fill=X,padx=14,pady=(8,4))
+        connection_panel = ttk.Frame(self, style="Panel.TFrame", padding=(18,12)); connection_panel.pack(fill=X,padx=14,pady=(8,4))
+        conn = ttk.Frame(connection_panel, style="Panel.TFrame"); conn.pack(fill=X)
         ttk.Label(conn,text="IP PS4:",style="Panel.TLabel").pack(side=LEFT)
         self.host_var=tk.StringVar(value=str(self.settings.get("host",""))); ttk.Entry(conn,textvariable=self.host_var,width=20).pack(side=LEFT,padx=(7,18))
         ttk.Label(conn,text="FTP:",style="Panel.TLabel").pack(side=LEFT)
         self.port_var=tk.StringVar(value=str(self.settings.get("ftp_port",FTP_PORT))); ttk.Entry(conn,textvariable=self.port_var,width=8).pack(side=LEFT,padx=(7,18))
         ttk.Button(conn,text="Buscar PS4",command=self.scan_ps4).pack(side=LEFT,padx=5)
-        ttk.Button(conn,text="Conectar",style="Accent.TButton",command=self.connect_ps4).pack(side=LEFT,padx=5)
+        self.ftp_connect_button = ttk.Button(conn,text="Conectar FTP",style="Accent.TButton",command=self.connect_ps4)
+        self.ftp_connect_button.pack(side=LEFT,padx=5)
         ttk.Button(conn,text="Desconectar",command=self.disconnect_ps4).pack(side=LEFT,padx=5)
         ttk.Button(conn,text="Revisar servicios",command=self.refresh_services).pack(side=LEFT,padx=5)
-        self.connection_var=tk.StringVar(value="● PS4 desconectada"); ttk.Label(conn,textvariable=self.connection_var,style="Panel.TLabel").pack(side=RIGHT)
+        self.connection_var=tk.StringVar(value="○ PS4 sin detectar")
+        ttk.Label(connection_panel,textvariable=self.connection_var,style="Panel.TLabel",wraplength=1200).pack(anchor="w",pady=(7,0))
 
         services=ttk.Frame(self,style="Card.TFrame",padding=(18,9)); services.pack(fill=X,padx=14,pady=(0,7))
         row=ttk.Frame(services,style="Card.TFrame"); row.pack(fill=X)
         ttk.Label(row,text="Servicios:",style="Card.TLabel").pack(side=LEFT,padx=(0,10)); self.service_vars={}
         for label,port in (("FTP",FTP_PORT),("Payload",BINLOADER_PORT),("Klog",KLOG_PORT),("Debug",PS4DEBUG_PORT),("RPI",RPI_PORT)):
-            v=tk.StringVar(value=f"● {label} :{port}"); self.service_vars[port]=v; ttk.Label(row,textvariable=v,style="Card.TLabel").pack(side=LEFT,padx=(0,18))
+            v=tk.StringVar(value=f"○ {label} :{port}"); self.service_vars[port]=v; ttk.Label(row,textvariable=v,style="Card.TLabel").pack(side=LEFT,padx=(0,18))
         self.notify_connect_var=tk.BooleanVar(value=bool(self.settings.get("notify_on_connect",True)))
         self.notify_transfer_var=tk.BooleanVar(value=bool(self.settings.get("notify_on_transfer",True)))
         self.auto_bridge_var=tk.BooleanVar(value=bool(self.settings.get("auto_load_notification_bridge",False)))
@@ -1811,11 +1817,8 @@ class PS4ManagerApp(tk.Tk):
         self.run_async(task,on_done=done,on_error=lambda e:self.console_status_var.set(f"Error: {e}"))
 
     def _startup_auto_connect(self):
-        if self.ftp.connected: return
-        known=self.host_var.get().strip() or str(self.settings.get("host","")).strip()
-        if known and can_connect(known,FTP_PORT,0.25):
-            self.host_var.set(known); self.port_var.set(str(FTP_PORT)); self.connect_ps4(); return
-        self.scan_ps4()
+        if not self.ftp.connected:
+            self.scan_ps4()
 
     def _resolve_game_title(self, title_id: str, fallback: str = "") -> str:
         tid=(title_id or "").strip().upper()
@@ -2275,27 +2278,64 @@ class PS4ManagerApp(tk.Tk):
                 self.refresh_local()
 
     # ---------- discovery / connection ----------
+    def _selected_ftp_port(self) -> int | None:
+        try:
+            port = int(self.port_var.get())
+            if not 1 <= port <= 65535:
+                raise ValueError
+            return port
+        except ValueError:
+            messagebox.showwarning(APP_NAME, "Puerto FTP no válido (1–65535).")
+            return None
+
+    def _update_connection_summary(self, host: str) -> None:
+        ftp_connected = self.ftp.connected and self.ftp.host == host
+        detected = self.detected_host == host and bool(host)
+        if self._ftp_connecting and host:
+            text = f"◐ Conectando FTP a {host}…"
+        elif ftp_connected:
+            text = f"● PS4 detectada: {host} · FTP conectado :{self.ftp.port}"
+        elif detected:
+            ftp_status = "sin conectar" if self.service_state.get(FTP_PORT) else "no disponible"
+            text = f"◐ PS4 detectada: {host} · FTP {ftp_status} :{self.port_var.get()}"
+        else:
+            text = f"○ PS4 sin respuesta: {host}" if host else "○ PS4 sin detectar"
+        self.connection_var.set(text)
+        self.ftp_connect_button.configure(
+            text="Reintentar FTP" if detected and not ftp_connected else "Conectar FTP",
+            state="disabled" if self._ftp_connecting else "normal",
+        )
+
     def scan_ps4(self) -> None:
+        if self._ftp_connecting:
+            return
+        ftp_port = self._selected_ftp_port()
+        if ftp_port is None:
+            return
+        self._connection_epoch += 1
+        epoch = self._connection_epoch
         known=self.host_var.get().strip() or str(self.settings.get("host", "")).strip()
         self.status_var.set("Buscando PS4…")
         def task():
-            # Fast path: the last working IP normally answers in a few ms.
-            if known and can_connect(known, FTP_PORT, 0.22): return [(known, 100)]
+            # Check the last console first, even when its FTP service is off.
+            if known and any(can_connect(known, p, 0.22) for p in
+                             (ftp_port, BINLOADER_PORT, KLOG_PORT, PS4DEBUG_PORT, RPI_PORT)):
+                return [(known, 100)]
             prefixes=local_scan_prefixes(known)
             candidates=[]
             for prefix in prefixes: candidates.extend(f"{prefix}.{i}" for i in range(1,255))
-            # Fast parallel FTP pass. Stop ranking complexity: GoldHEN FTP :2121 is our primary signature.
+            # Prefer FTP, then fall back to the independent GoldHEN services.
             found=[]
             with ThreadPoolExecutor(max_workers=160) as ex:
-                futs={ex.submit(can_connect,ip,FTP_PORT,0.18):ip for ip in dict.fromkeys(candidates)}
+                futs={ex.submit(can_connect,ip,ftp_port,0.18):ip for ip in dict.fromkeys(candidates)}
                 for fut in as_completed(futs):
                     try:
                         if fut.result(): found.append((futs[fut],5))
                     except Exception: pass
             if found: return found
-            # Fallback for FTP disabled: Klog/Payload signatures.
+            # A reachable console does not require an FTP session.
             with ThreadPoolExecutor(max_workers=160) as ex:
-                futs={ex.submit(can_connect,ip,p,0.18):(ip,p) for ip in dict.fromkeys(candidates) for p in (KLOG_PORT,BINLOADER_PORT)}
+                futs={ex.submit(can_connect,ip,p,0.18):(ip,p) for ip in dict.fromkeys(candidates) for p in (KLOG_PORT,BINLOADER_PORT,PS4DEBUG_PORT,RPI_PORT)}
                 score={}
                 for fut in as_completed(futs):
                     try:
@@ -2303,62 +2343,97 @@ class PS4ManagerApp(tk.Tk):
                     except Exception: pass
             return [(ip,sc) for ip,sc in score.items() if sc]
         def done(found):
+            if epoch != self._connection_epoch:
+                return
             if not found:
-                self.status_var.set("No se encontró la PS4 automáticamente."); messagebox.showinfo(APP_NAME,"No se encontró la PS4. Comprueba que PC y PS4 estén en la misma red y que FTP o Payload Server estén activos."); return
-            ip=found[0][0]; self.host_var.set(ip); self.port_var.set(str(FTP_PORT)); self.status_var.set(f"PS4 encontrada: {ip}. Conectando…"); self.connect_ps4()
+                self.detected_host = ""
+                self._update_connection_summary(self.host_var.get().strip())
+                self.status_var.set("No se encontró la PS4 automáticamente.")
+                messagebox.showinfo(APP_NAME, "No se encontró la PS4. Comprueba la red y activa algún servicio GoldHEN (FTP, Payload, Klog, Debug o RPI). También puedes introducir la IP manualmente.")
+                return
+            ip = max(found, key=lambda item: item[1])[0]
+            if self.ftp.connected and self.ftp.host != ip:
+                self.disconnect_ps4()
+            self.host_var.set(ip)
+            self.settings.set("host", ip)
+            self.detected_host = ip
+            self.refresh_services(connect_ftp=True)
         self.run_async(task,on_done=done)
 
     def connect_ps4(self) -> None:
+        if self._ftp_connecting:
+            return
         host = self.host_var.get().strip()
         if not host:
             messagebox.showwarning(APP_NAME, "Introduce la IP de la PS4 o pulsa Buscar PS4.")
             return
-        try:
-            port = int(self.port_var.get())
-        except ValueError:
-            messagebox.showwarning(APP_NAME, "Puerto FTP no válido.")
+        port = self._selected_ftp_port()
+        if port is None:
             return
-        self.status_var.set(f"Conectando a {host}:{port}…")
+        self._connection_epoch += 1
+        epoch = self._connection_epoch
+        self._ftp_connecting = True
+        self._update_connection_summary(host)
+        self.status_var.set(f"Conectando FTP a {host}:{port}…")
 
         def task():
             return self.ftp.connect(host, port)
 
         def done(welcome: str):
+            self._ftp_connecting = False
+            if epoch != self._connection_epoch or host != self.host_var.get().strip():
+                self.ftp.disconnect()
+                self._update_connection_summary(self.host_var.get().strip())
+                return
+            self.detected_host = host
             self.settings.set("host", host)
             self.settings.set("ftp_port", port)
-            self.connection_var.set(f"● Conectada  {host}:{port}")
+            self._update_connection_summary(host)
             self.status_var.set(welcome)
             self.remote_path = "/"
             self.refresh_remote()
             self.refresh_services(after_connect=True)
 
         def error(exc: Exception):
-            self.connection_var.set("● Desconectada")
-            self.status_var.set("Error de conexión")
-            messagebox.showerror(APP_NAME, f"No se pudo conectar a {host}:{port}\n\n{exc}")
+            self._ftp_connecting = False
+            if epoch != self._connection_epoch or host != self.host_var.get().strip():
+                self._update_connection_summary(self.host_var.get().strip())
+                return
+            self.remote_tree.delete(*self.remote_tree.get_children())
+            self.remote_items.clear()
+            # A failed FTP session must not hide the other reachable services.
+            self.refresh_services(ftp_error=str(exc))
 
         self.run_async(task, on_done=done, on_error=error)
 
     def disconnect_ps4(self) -> None:
+        self._connection_epoch += 1
         self.stop_klog()
         self.ftp.disconnect()
-        self.connection_var.set("● Desconectada")
+        self.detected_host = ""
         self.remote_tree.delete(*self.remote_tree.get_children())
         self.remote_items.clear()
         self.service_state = {p: False for p in self.service_state}
         self._apply_service_state(self.service_state)
+        self._update_connection_summary("")
         self.status_var.set("Desconectada")
 
-    def refresh_services(self, after_connect: bool = False) -> None:
+    def refresh_services(self, after_connect: bool = False, *,
+                         connect_ftp: bool = False, ftp_error: str | None = None) -> None:
         host = self.host_var.get().strip()
         if not host:
             return
+        ftp_port = self._selected_ftp_port()
+        if ftp_port is None:
+            return
+        port_text = self.port_var.get()
+        epoch = self._connection_epoch
         self.post_status("Comprobando servicios GoldHEN…")
 
         def task():
             ports = (FTP_PORT, BINLOADER_PORT, KLOG_PORT, PS4DEBUG_PORT, RPI_PORT)
             with ThreadPoolExecutor(max_workers=5) as ex:
-                futs = {p: ex.submit(can_connect, host, p, 0.7) for p in ports}
+                futs = {p: ex.submit(can_connect, host, ftp_port if p == FTP_PORT else p, 0.7) for p in ports}
                 state = {p: bool(futs[p].result()) for p in ports}
             if state[PS4DEBUG_PORT]:
                 try:
@@ -2371,20 +2446,43 @@ class PS4ManagerApp(tk.Tk):
             return state
 
         def done(state):
+            if (epoch != self._connection_epoch or host != self.host_var.get().strip()
+                    or port_text != self.port_var.get()):
+                return
             self._apply_service_state(state)
             active = sum(1 for p in (FTP_PORT, BINLOADER_PORT, KLOG_PORT, PS4DEBUG_PORT, RPI_PORT) if state.get(p))
-            self.status_var.set(f"Servicios activos: {active}/5")
+            reachable = active > 0 or bool(state.get("rpi_tcp"))
+            ftp_connected = self.ftp.connected and self.ftp.host == host
+            self.detected_host = host if reachable or ftp_connected else ""
+            if self.detected_host:
+                self.settings.set("host", host)
+            self._update_connection_summary(host)
+            if ftp_connected:
+                self.status_var.set(f"FTP conectado · Servicios activos: {active}/5")
+            elif reachable:
+                hint = (f"FTP disponible :{ftp_port}; pulsa Reintentar FTP."
+                        if state.get(FTP_PORT) else
+                        f"FTP no disponible :{ftp_port}. Actívalo en GoldHEN y pulsa Reintentar FTP.")
+                self.status_var.set(f"PS4 detectada · Servicios activos: {active}/5 · {hint}")
+            else:
+                self.status_var.set("La PS4 no responde. Comprueba la IP, la red y los servicios GoldHEN.")
+            # A closed FTP port is explained inline when other services respond.
+            # Keep actual login failures and unreachable-host errors visible.
+            if ftp_error and (not reachable or state.get(FTP_PORT)):
+                messagebox.showerror(APP_NAME, f"No se pudo conectar por FTP a {host}:{ftp_port}\n\n{ftp_error}")
             if state.get(RPI_PORT):
                 self.rpi_status_var.set("● RPI listo :12800")
             elif state.get("rpi_tcp"):
                 self.rpi_status_var.set("◐ RPI abierto pero no responde")
             else:
                 self.rpi_status_var.set("○ RPI no disponible")
-            if hasattr(self, "console_info_vars"):
+            if reachable and hasattr(self, "console_info_vars"):
                 self.refresh_console_info()
             if hasattr(self, "online_tree"):
                 self.online_update_states()
-            if after_connect and self.notify_connect_var.get():
+            if connect_ftp and state.get(FTP_PORT) and not ftp_connected:
+                self.connect_ps4()
+            if after_connect and ftp_connected and self.notify_connect_var.get():
                 if state.get(PS4DEBUG_PORT):
                     self.send_ps4_notification(f"{APP_NAME}\nPC conectado correctamente ✓\nGoldHEN listo para usar 🎮", silent=True)
                 elif self.auto_bridge_var.get() and state.get(BINLOADER_PORT) and PS4DEBUG_LOCAL.exists():
@@ -2392,18 +2490,26 @@ class PS4ManagerApp(tk.Tk):
                 elif not state.get(BINLOADER_PORT):
                     self.status_var.set("FTP conectado ✓  |  Aviso automático pendiente: activa Payload Server :9090 en GoldHEN")
 
-        self.run_async(task, on_done=done, on_error=lambda e: self.post_status(f"No se pudieron revisar servicios: {e}"))
+        def error(exc: Exception):
+            if epoch == self._connection_epoch and host == self.host_var.get().strip():
+                self._update_connection_summary(host)
+                self.status_var.set(f"No se pudieron revisar servicios: {exc}")
+                if ftp_error:
+                    messagebox.showerror(APP_NAME, f"No se pudo conectar por FTP a {host}:{ftp_port}\n\n{ftp_error}")
+
+        self.run_async(task, on_done=done, on_error=error)
 
     def _apply_service_state(self, state) -> None:
         for port in (FTP_PORT, BINLOADER_PORT, KLOG_PORT, PS4DEBUG_PORT, RPI_PORT):
             val = bool(state.get(port, False)) if isinstance(state, dict) else False
             self.service_state[port] = val
             label = {FTP_PORT: "FTP", BINLOADER_PORT: "Payload", KLOG_PORT: "Klog", PS4DEBUG_PORT: "Debug", RPI_PORT: "RPI"}[port]
-            self.service_vars[port].set(f"{'●' if val else '○'} {label} :{port}")
+            displayed_port = self.port_var.get() if port == FTP_PORT else port
+            self.service_vars[port].set(f"{'●' if val else '○'} {label} :{displayed_port}")
 
     def require_connection(self) -> bool:
         if not self.ftp.connected:
-            messagebox.showwarning(APP_NAME, "Primero conecta con la PS4.")
+            messagebox.showwarning(APP_NAME, "Esta operación requiere FTP. Activa el servidor FTP en GoldHEN y pulsa Conectar FTP o Reintentar FTP.")
             return False
         return True
 
