@@ -1,0 +1,41 @@
+name: Build PS4 Companion PKG
+
+on:
+  push:
+    branches:
+      - feature/ps4-companion-v0.2
+    paths:
+      - 'companion/ps4_app/**'
+      - '.github/workflows/build-ps4-companion.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld curl tar
+
+      - name: Download OpenOrbis v0.5.4
+        run: |
+          curl -fL -o openorbis.tar.gz https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz
+          tar xzf openorbis.tar.gz
+          echo "OO_PS4_TOOLCHAIN=$PWD/OpenOrbis/PS4Toolchain" >> "$GITHUB_ENV"
+
+      - name: Prepare package assets
+        working-directory: companion/ps4_app
+        run: bash ./prepare_openorbis_assets.sh
+
+      - name: Build PKG
+        working-directory: companion/ps4_app
+        run: make
+
+      - name: Upload PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS4_GoldHEN_Companion_v0.2.1_PKG
+          path: companion/ps4_app/*.pkg
