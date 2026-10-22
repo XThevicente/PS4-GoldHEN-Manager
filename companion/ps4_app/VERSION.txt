@@ -1,0 +1,2 @@
+PS4 GoldHEN Companion v0.1.0
+Protocol: ps4gh-companion/1
