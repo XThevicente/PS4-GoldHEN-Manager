@@ -54,3 +54,25 @@ GitHub Actions genera un artefacto **v1.1.0-beta.2** independiente. Nunca sobres
 ## Limitaciones actuales
 
 Las noticias proceden de fuentes públicas verificables y no necesitan acceder a cuentas del foro. La pestaña no permite responder o iniciar sesión: para eso abre el portal en el navegador. La detección de actualizaciones no instala nada automáticamente. La beta debe probarse en un ordenador Windows real antes de promoverla a estable.
+
+
+## Cola compartida y vinculación de PC (beta.3)
+
+La pestaña Scene Hub de PS4 GoldHEN Manager incorpora una cola de enlaces legalmente distribuibles.
+
+**Desde el PC:**
+1. Pulsa **Generar código PC**. Se crea un token aleatorio de 192 bits y se mantiene en memoria; no se escribe en el fichero de configuración ni en los logs.
+2. Pulsa **Vincular en la web**. Inicia sesión en el portal, abre **Tools Hub → Mi cola**, pega el código y el nombre de tu ordenador. El portal solo almacena el SHA-256 del token.
+3. En el PC pulsa **Sincronizar** para consultar **manualmente** la cola. El resultado solo contiene nombres, plataformas y enlaces HTTPS; el programa no descarga ni instala automáticamente nada.
+4. Usa **Abrir enlace seleccionado** para abrir voluntariamente la URL en el navegador, tras confirmar. Para revocar acceso entra en el portal → Dispositivos vinculados.
+
+La autorización dura 30 días en el servidor, pero en esta beta el código solo se guarda mientras la app permanezca abierta. Para futuras sesiones vuelve a generar y vincular un código. La web permite hasta cinco dispositivos.
+
+**Modo sin cuenta / alternativa:**
+Desde Tools Hub → Mi cola, selecciona **Exportar cola (JSON)**. En el programa Windows pulsa **Importar JSON** y selecciona ese fichero. La aplicación valida tamaño máximo, formato, número de elementos y enlaces HTTPS antes de mostrarlos. Funciona sin configurar API.
+
+**Estado:** la interfaz web y el cliente Python están implementados. Queda por comprobar la comunicación extremo a extremo desde Windows con una cuenta real, ya que el servidor no permitió verificar las solicitudes externas desde el entorno de pruebas. Hasta validarlo, la importación JSON es la opción plenamente verificable.
+
+Ninguna de estas funciones conecta con PS4, modifica FTP/RPI ni envía archivos a la consola. Se mantiene la opción de instalar únicamente paquetes legítimos que tenga derecho a utilizar el propietario.
+
+Para validar: `python -m unittest discover -s tests -p "test_*.py" -v` y revisar el artefacto de Windows de la PR.

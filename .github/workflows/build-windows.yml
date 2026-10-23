@@ -9,6 +9,7 @@ on:
     paths:
       - 'ps4_manager.py'
       - 'scene_hub.py'
+      - 'scene_queue.py'
       - 'scene_news.json'
       - 'tests/**'
       - 'requirements.txt'
@@ -38,7 +39,7 @@ jobs:
 
       - name: Validate sources
         run: |
-          python -m py_compile ps4_manager.py scene_hub.py
+          python -m py_compile ps4_manager.py scene_hub.py scene_queue.py
           python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Resolve version

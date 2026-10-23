@@ -29,9 +29,10 @@ from tkinter import END, BOTH, LEFT, RIGHT, X, Y, filedialog, messagebox, simple
 from tkinter import ttk
 
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
+from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.2"
+APP_VERSION = "1.1.0-beta.3"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -1163,6 +1164,41 @@ class PS4ManagerApp(tk.Tk):
                    command=lambda: webbrowser.open_new_tab(RELEASES_URL)).pack(
             side=LEFT, padx=(8, 0))
 
+        queue_card = ttk.Frame(page, style="Card.TFrame", padding=12)
+        queue_card.pack(fill=BOTH, expand=True, pady=(9, 0))
+        ttk.Label(queue_card, text="COLA DEL SCENE HUB · MÓVIL Y PC",
+                  font=("Segoe UI", 12, "bold"), style="Card.TLabel").pack(anchor="w", pady=(0, 7))
+        ttk.Label(queue_card, text="Sin instalaciones automáticas · elige cada descarga desde su sitio oficial",
+                  style="Card.TLabel").pack(anchor="w", pady=(0, 7))
+        queue_buttons = ttk.Frame(queue_card, style="Card.TFrame")
+        queue_buttons.pack(fill=X, pady=(0, 7))
+        ttk.Button(queue_buttons, text="1. Generar código PC",
+                   command=self.scene_generate_pairing_code).pack(side=LEFT, padx=(0, 5))
+        ttk.Button(queue_buttons, text="2. Vincular en la web",
+                   command=lambda: webbrowser.open_new_tab(PAIRING_PAGE)).pack(side=LEFT, padx=(0, 5))
+        ttk.Button(queue_buttons, text="3. Sincronizar",
+                   command=self.scene_fetch_queue).pack(side=LEFT, padx=(0, 5))
+        ttk.Button(queue_buttons, text="Importar JSON",
+                   command=self.scene_import_queue).pack(side=LEFT, padx=(0, 5))
+        ttk.Button(queue_buttons, text="Abrir enlace seleccionado",
+                   command=self.scene_open_queue_item).pack(side=LEFT)
+        self.scene_pairing_code = ""
+        self.scene_queue_busy = False
+        self.scene_queue = []
+        self.scene_code_var = tk.StringVar(value="Genera el código aquí. Vincúlalo en tu cuenta del portal y pulsa Sincronizar.")
+        ttk.Entry(queue_card, textvariable=self.scene_code_var, state="readonly",
+                  font=("Consolas", 10)).pack(fill=X, pady=(0, 7))
+        self.scene_queue_status_var = tk.StringVar(value="Cola vacía. También puedes importar el JSON exportado desde la web.")
+        ttk.Label(queue_card, textvariable=self.scene_queue_status_var,
+                  style="Card.TLabel", wraplength=1100).pack(anchor="w", pady=(0, 7))
+        self.scene_queue_tree = ttk.Treeview(queue_card, columns=("platform", "name"),
+                                             show="headings", selectmode="browse", height=5)
+        for key, name, width in (("platform", "Plataforma", 160), ("name", "Recurso / descarga", 770)):
+            self.scene_queue_tree.heading(key, text=name)
+            self.scene_queue_tree.column(key, width=width, stretch=key == "name")
+        self.scene_queue_tree.pack(fill=BOTH, expand=True)
+        self.scene_queue_tree.bind("<Double-1>", lambda _event: self.scene_open_queue_item())
+
         self.after(1200, self.scene_refresh)
         self.after(30 * 60 * 1000, self._scene_periodic_refresh)
 
@@ -1209,6 +1245,74 @@ class PS4ManagerApp(tk.Tk):
                 "No se pudo consultar Scene Hub: " + str(exc)[:130])
 
         self.run_async(worker, on_done=done, on_error=failed)
+
+    def scene_generate_pairing_code(self) -> None:
+        """Código efímero de 192 bits. No persistirlo en ajustes ni mostrarlo en logs."""
+        self.scene_pairing_code = create_pairing_code()
+        self.scene_code_var.set(self.scene_pairing_code)
+        self.scene_queue_status_var.set(
+            "Copia este código en GoldHEN Tools Hub > Mi cola. "
+            "No lo compartas. Caduca a los 30 días; genera uno nuevo al reiniciar.")
+
+    def _scene_render_queue(self, items, origin: str) -> None:
+        """Render en el hilo principal de Tkinter; no abrir automáticamente enlaces."""
+        self.scene_queue = list(items)
+        self.scene_queue_tree.delete(*self.scene_queue_tree.get_children())
+        for i, item in enumerate(self.scene_queue):
+            self.scene_queue_tree.insert("", END, iid=str(i),
+                                         values=(item["platform"], item["name"]))
+        self.scene_queue_status_var.set(
+            f"{len(self.scene_queue)} enlaces cargados desde {origin}. "
+            "Doble clic para abrir la página HTTPS seleccionada.")
+
+    def scene_import_queue(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Selecciona tu exportación de GoldHEN Scene Hub",
+            filetypes=[("Cola Scene Hub", "*.json"), ("JSON", "*.json")])
+        if not path:
+            return
+        try:
+            items = read_export_file(path)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(APP_NAME, "Importación rechazada: " + str(exc))
+            return
+        self._scene_render_queue(items, "archivo JSON")
+
+    def scene_fetch_queue(self) -> None:
+        """Consulta la cola privada en un hilo; el servidor valida el código."""
+        if self.scene_queue_busy:
+            return
+        if not self.scene_pairing_code:
+            messagebox.showinfo(APP_NAME, "Primero genera el código y vincúlalo desde la web.")
+            return
+        self.scene_queue_busy = True
+        self.scene_queue_status_var.set("Consultando la cola vinculada de forma segura…")
+        code = self.scene_pairing_code
+
+        def done(items):
+            self.scene_queue_busy = False
+            self._scene_render_queue(items, "tu cuenta")
+
+        def fail(exc):
+            self.scene_queue_busy = False
+            self.scene_queue_status_var.set(
+                "No se pudo sincronizar: " + str(exc)[:140] +
+                " · Como alternativa, exporta el JSON desde la web e impórtalo aquí.")
+
+        self.run_async(lambda: fetch_account_queue(code), on_done=done, on_error=fail)
+
+    def scene_open_queue_item(self) -> None:
+        selected = self.scene_queue_tree.selection()
+        if not selected:
+            messagebox.showinfo(APP_NAME, "Selecciona un recurso de la cola.")
+            return
+        try:
+            url = self.scene_queue[int(selected[0])]["url"]
+        except (IndexError, ValueError, KeyError, TypeError):
+            return
+        if valid_https_link(url) and messagebox.askyesno(
+            APP_NAME, "¿Abrir este enlace HTTPS externo en tu navegador?\\n" + url[:250]):
+            webbrowser.open_new_tab(url)
 
     def scene_open_news(self) -> None:
         selection = self.scene_news_tree.selection()
