@@ -32,7 +32,7 @@ from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_avail
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.2"
+APP_VERSION = "1.1.0-beta.3"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
