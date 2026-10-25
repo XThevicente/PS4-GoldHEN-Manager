@@ -42,6 +42,20 @@ Documentación: [Scene Hub y pruebas](docs/SCENE_HUB.md)
 
 Portal: https://itrsr62yvx.zite.so
 
+## Beta 1.1.0-beta.4 — Transferencias y perfiles de consola (rama experimental)
+
+Hay una nueva rama de pruebas con una cola FIFO para FTP PS4, estados de
+transferencia, cancelación de tareas pendientes y un selector de consola.
+El perfil de PS5 es **únicamente una vista previa sin conexión real**; los
+servicios y protocolos PS4 se mantienen aislados.
+
+**[Ver la rama experimental](https://github.com/XThevicente/PS4-GoldHEN-Manager/tree/feature/multiconsole-transfer-queue)**
+y su [guía de pruebas](docs/MULTICONSOLE_BETA.md).
+
+La versión estable `v1.0.0` permanece sin cambios. No hay reanudación
+automática de transferencias, soporte PS5 funcional ni copia de código GPL-3.0
+de PS5Upload.
+
 ## Features
 
 - **Automatic PS4 discovery** on the local network.
