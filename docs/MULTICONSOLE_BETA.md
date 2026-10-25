@@ -46,3 +46,9 @@ y Scene Hub, y añade un selector para separar las consolas.
 3. Añadir un adaptador PS5 **sólo después** de validar el protocolo y un helper
    compatible, sus permisos, su autenticación y las operaciones reales.
 4. Rediseñar progresivamente el panel de inicio, sin reescribir el motor de PS4.
+
+## beta.5 — reanudación y verificación
+
+Los archivos se envían a temporales `.goldhen.part`, y las subidas parciales sólo se reanudan si el SHA-256 de su prefijo coincide con el local. La descarga termina en un temporal local, comprueba tamaño y SHA-256 de vuelta contra el servidor, y renombra al final. Los destinos existentes bloquean la operación: **no se sobrescriben**. Para reanudar después de un fallo, vuelve a enviar el mismo archivo desde la interfaz; la cola no sobrevive al reinicio. REST y SIZE deben estar soportados por el servidor FTP; el hash remoto implica una lectura completa adicional y puede tardar mucho. Si la verificación falla, el temporal queda para revisión manual. Esta ruta no ha sido probada en PS4 física.
+
+El adaptador AVA1 de PS5 es por ahora un límite de protocolo explícitamente desactivado; no hay emparejamiento Noise ni cliente funcional. Ningún comando de PS4 se aplica a PS5.

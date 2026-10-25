@@ -12,6 +12,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from console_profiles import PS4
+from resumable_ftp import ResumableFTP
 
 
 class TransferMixin:
@@ -22,7 +23,7 @@ class TransferMixin:
                   font=("Segoe UI", 17, "bold")).pack(anchor="w", pady=(0, 7))
         ttk.Label(frame, text=(
             "Una transferencia a la vez. Errores visibles; "
-            "sin reanudación automática ni instalación de PKG implícita."),
+            "reanudación segura con temporales y SHA-256; sin instalación PKG implícita."),
             style="Sub.TLabel").pack(anchor="w", pady=(0, 10))
         self.transfer_tree = ttk.Treeview(
             frame, columns=("direction", "state", "source", "target", "progress", "detail"),
@@ -115,10 +116,10 @@ class TransferMixin:
                     raise FileNotFoundError(str(local))
                 if local.is_file():
                     self.ftp.ensure_dir(posixpath.dirname(remote))
-                    self.ftp.upload_file(
+                    ResumableFTP(self.ftp).upload(
                         local, remote,
-                        lambda sent, total: self._transfer_progress(
-                            job_id, sent, total, f"Subiendo {local.name}"))
+                        lambda done, total, phase: self._transfer_progress(
+                            job_id, done, total, f"{phase}: {local.name}"))
                     return
                 if not local.is_dir():
                     raise ValueError(f"Ruta no válida: {local}")
@@ -134,11 +135,11 @@ class TransferMixin:
                     remote_file = posixpath.join(
                         remote, file.relative_to(local).as_posix())
                     size = file.stat().st_size
-                    self.ftp.upload_file(
+                    ResumableFTP(self.ftp).upload(
                         file, remote_file,
-                        lambda sent, _size, base=completed, name=file.name:
-                            self._transfer_progress(job_id, base + sent, total,
-                                                    f"Subiendo {name}"))
+                        lambda done, _total, phase, base=completed, name=file.name:
+                            self._transfer_progress(job_id, base + done, total,
+                                                    f"{phase}: {name}"))
                     completed += size
                 self._transfer_progress(job_id, total, total, f"Carpeta {local.name}")
 
@@ -184,7 +185,10 @@ class TransferMixin:
                             self._transfer_progress(job_id, before + received,
                                                     None, f"Descargando {entry.name}")
 
-                        self.ftp.download_file(entry.path, target, progress)
+                        ResumableFTP(self.ftp).download(
+                            entry.path, target,
+                            lambda done, total, phase: self._transfer_progress(
+                                job_id, before + done, None, f"{phase}: {entry.name}"))
                         completed += target.stat().st_size
 
                 visit(remote_item, local_target)
