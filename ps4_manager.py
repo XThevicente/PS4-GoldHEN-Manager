@@ -30,6 +30,7 @@ from tkinter import ttk
 
 from console_profiles import PS4, PS5, PROFILES, get_profile, profile_from_label
 from transfer_queue import TransferQueue
+from transfer_ui import TransferMixin
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
@@ -911,7 +912,7 @@ class FTPClient:
                 self.ftp.retrbinary(f"RETR {remote_path}", callback, blocksize=256 * 1024)
 
 
-class PS4ManagerApp(tk.Tk):
+class PS4ManagerApp(TransferMixin, tk.Tk):
     @staticmethod
     def _resource_path(*parts: str) -> Path:
         # PyInstaller one-file extracts bundled resources below sys._MEIPASS.
@@ -2939,31 +2940,9 @@ class PS4ManagerApp(tk.Tk):
         self.run_async(task, on_done=lambda _r: self.refresh_remote(), on_error=lambda e: messagebox.showerror(APP_NAME, f"Error al borrar:\n{e}"))
 
     # ---------- transfers ----------
-    def _upload_paths(self, selected: list[Path], base_remote: str, completion_label: str = "Subida completada") -> None:
-        self.progress["value"] = 0
-
-        def upload_path(local: Path, remote: str):
-            if local.is_dir():
-                self.ftp.ensure_dir(remote)
-                for child in sorted(local.iterdir(), key=lambda p: p.name.lower()):
-                    upload_path(child, posixpath.join(remote, child.name))
-            else:
-                label = f"Subiendo {local.name}"
-                self.ftp.upload_file(local, remote, lambda c, t: self.post_progress(c, t, label))
-
-        def task():
-            self.ftp.ensure_dir(base_remote)
-            for p in selected:
-                upload_path(p, posixpath.join(base_remote, p.name))
-
-        def done(_r):
-            self.progress["value"] = 100
-            self.status_var.set(completion_label)
-            self.refresh_remote()
-            if self.notify_transfer_var.get():
-                self.send_ps4_notification(f"{APP_NAME}\n{completion_label}", silent=True)
-
-        self.run_async(task, on_done=done, on_error=lambda e: messagebox.showerror(APP_NAME, f"Error durante la subida:\n{e}"))
+    def _upload_paths(self, selected: list[Path], base_remote: str,
+                      completion_label: str = "Subida completada") -> None:
+        self.queue_upload_paths(selected, base_remote, completion_label)
 
     def upload_selected(self) -> None:
         if not self.require_connection():
@@ -2986,36 +2965,7 @@ class PS4ManagerApp(tk.Tk):
         self._upload_paths(files, "/data/pkg", completion_label=f"{len(files)} PKG subido(s) a /data/pkg")
 
     def download_selected(self) -> None:
-        if not self.require_connection():
-            return
-        selected = [self.remote_items[i] for i in self.remote_tree.selection() if i in self.remote_items]
-        if not selected:
-            messagebox.showinfo(APP_NAME, "Selecciona archivos o carpetas en el panel de la PS4.")
-            return
-        base_local = self.local_path
-        self.progress["value"] = 0
-
-        def download_item(item: RemoteItem, local_target: Path):
-            if item.is_dir:
-                local_target.mkdir(parents=True, exist_ok=True)
-                for child in self.ftp.listdir(item.path):
-                    download_item(child, local_target / child.name)
-            else:
-                label = f"Descargando {item.name}"
-                self.ftp.download_file(item.path, local_target, lambda c, t: self.post_progress(c, t, label))
-
-        def task():
-            for item in selected:
-                download_item(item, base_local / item.name)
-
-        def done(_r):
-            self.progress["value"] = 100
-            self.status_var.set("Descarga completada")
-            self.refresh_local()
-            if self.notify_transfer_var.get():
-                self.send_ps4_notification(f"{APP_NAME}\nDescarga al PC completada.", silent=True)
-
-        self.run_async(task, on_done=done, on_error=lambda e: messagebox.showerror(APP_NAME, f"Error durante la descarga:\n{e}"))
+        self.queue_download_selected()
 
     # ---------- remote PKG installer ----------
     def add_pkg_files(self) -> None:
