@@ -1983,7 +1983,7 @@ class PS4ManagerApp(TransferMixin, tk.Tk):
         self.run_async(task,on_done=done,on_error=lambda e:self.console_status_var.set(f"Error: {e}"))
 
     def _startup_auto_connect(self):
-        if self.active_profile is PS4 and not self.ftp.connected:
+        if getattr(self, 'active_profile', PS4) is PS4 and not self.ftp.connected:
             self.scan_ps4()
 
     def _resolve_game_title(self, title_id: str, fallback: str = "") -> str:
