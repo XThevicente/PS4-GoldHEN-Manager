@@ -28,11 +28,14 @@ import tkinter as tk
 from tkinter import END, BOTH, LEFT, RIGHT, X, Y, filedialog, messagebox, simpledialog
 from tkinter import ttk
 
+from console_profiles import PS4, PS5, PROFILES, get_profile, profile_from_label
+from transfer_queue import TransferQueue
+from transfer_ui import TransferMixin
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.3"
+APP_VERSION = "1.1.0-beta.4"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -909,7 +912,7 @@ class FTPClient:
                 self.ftp.retrbinary(f"RETR {remote_path}", callback, blocksize=256 * 1024)
 
 
-class PS4ManagerApp(tk.Tk):
+class PS4ManagerApp(TransferMixin, tk.Tk):
     @staticmethod
     def _resource_path(*parts: str) -> Path:
         # PyInstaller one-file extracts bundled resources below sys._MEIPASS.
@@ -959,6 +962,10 @@ class PS4ManagerApp(tk.Tk):
 
         super().__init__()
         self.settings = Settings()
+        self.active_profile = get_profile(self.settings.get("console_profile"))
+        self.transfers = TransferQueue()
+        self._transfer_runners = {}
+        self._last_transfer_redraw = 0.0
         self.title(f"{APP_NAME} v{APP_VERSION}")
         self._apply_app_icon()
         self.geometry("1536x1024")
@@ -987,6 +994,7 @@ class PS4ManagerApp(tk.Tk):
 
         self._setup_style()
         self._build_ui()
+        self._apply_console_profile(initial=True)
         self.refresh_local()
         self.after(100, self._process_ui_queue)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -997,7 +1005,7 @@ class PS4ManagerApp(tk.Tk):
         style = ttk.Style(self)
         try: style.theme_use("clam")
         except Exception: pass
-        bg="#061525"; card="#0a2138"; card2="#0c2945"; line="#1b5685"; text="#f4f8fc"; muted="#a8c2d9"; blue="#087cff"
+        bg="#0d1119"; card="#161d29"; card2="#202b3a"; line="#39485d"; text="#f4f8fc"; muted="#a5b6c9"; blue="#3685f5"
         self.configure(bg=bg)
         style.configure(".", background=bg, foreground=text, fieldbackground="#0b1d30", font=("Segoe UI",10))
         style.configure("TFrame", background=bg)
@@ -1039,8 +1047,15 @@ class PS4ManagerApp(tk.Tk):
         ttk.Label(header,text=" Manager",style="Header.TLabel").pack(side=LEFT)
         ttk.Label(header,text="FTP  •  PKG remoto  •  GoldHEN services  •  Payloads  •  Cheats & Mods",style="Card.TLabel").pack(side=LEFT,padx=(18,0),pady=(8,0))
         ttk.Label(header,text=f"v{APP_VERSION}",style="Card.TLabel").pack(side=RIGHT,padx=8)
+        self.profile_var = tk.StringVar(value=self.active_profile.label)
+        profile_select = ttk.Combobox(
+            header, textvariable=self.profile_var,
+            values=[p.label for p in PROFILES], state="readonly", width=32)
+        profile_select.pack(side=RIGHT, padx=(12, 0))
+        profile_select.bind("<<ComboboxSelected>>", self._apply_console_profile)
 
         connection_panel = ttk.Frame(self, style="Panel.TFrame", padding=(18,12)); connection_panel.pack(fill=X,padx=14,pady=(8,4))
+        self.connection_panel = connection_panel
         conn = ttk.Frame(connection_panel, style="Panel.TFrame"); conn.pack(fill=X)
         ttk.Label(conn,text="IP PS4:",style="Panel.TLabel").pack(side=LEFT)
         self.host_var=tk.StringVar(value=str(self.settings.get("host",""))); ttk.Entry(conn,textvariable=self.host_var,width=20).pack(side=LEFT,padx=(7,18))
@@ -1055,6 +1070,7 @@ class PS4ManagerApp(tk.Tk):
         ttk.Label(connection_panel,textvariable=self.connection_var,style="Panel.TLabel",wraplength=1200).pack(anchor="w",pady=(7,0))
 
         services=ttk.Frame(self,style="Card.TFrame",padding=(18,9)); services.pack(fill=X,padx=14,pady=(0,7))
+        self.services_panel = services
         row=ttk.Frame(services,style="Card.TFrame"); row.pack(fill=X)
         ttk.Label(row,text="Servicios:",style="Card.TLabel").pack(side=LEFT,padx=(0,10)); self.service_vars={}
         for label,port in (("FTP",FTP_PORT),("Payload",BINLOADER_PORT),("Klog",KLOG_PORT),("Debug",PS4DEBUG_PORT),("RPI",RPI_PORT)):
@@ -1067,17 +1083,63 @@ class PS4ManagerApp(tk.Tk):
             ttk.Checkbutton(opts,text=txt,variable=var,command=self.save_preferences).pack(side=LEFT,padx=(0,18))
 
         workspace=ttk.Frame(self); workspace.pack(fill=BOTH,expand=True,padx=14)
+        self.workspace = workspace
         nav=ttk.Frame(workspace,style="Card.TFrame",padding=(5,8)); nav.pack(side=LEFT,fill=Y,padx=(0,8))
         self.notebook=ttk.Notebook(workspace, style="Hidden.TNotebook"); self.notebook.pack(side=LEFT,fill=BOTH,expand=True)
-        self.files_tab=ttk.Frame(self.notebook); self.pkg_tab=ttk.Frame(self.notebook); self.library_tab=ttk.Frame(self.notebook); self.firmware_tab=ttk.Frame(self.notebook); self.tools_tab=ttk.Frame(self.notebook); self.console_tab=ttk.Frame(self.notebook); self.cheats_tab=ttk.Frame(self.notebook); self.scene_tab=ttk.Frame(self.notebook)
-        tabs=((self.files_tab,"Archivos","📁  Archivos"),(self.pkg_tab,"Instalador PKG","📦  Instalador PKG"),(self.library_tab,"Biblioteca","🎮  Biblioteca"),(self.firmware_tab,"Firmware","🛡️  Firmware"),(self.tools_tab,"Herramientas GoldHEN","🔧  Herramientas"),(self.console_tab,"Mi PS4","▣  Mi PS4"),(self.cheats_tab,"Cheats & Mods","🎮  Cheats & Mods"),(self.scene_tab,"Scene Hub","📰  Scene Hub"))
+        self.files_tab=ttk.Frame(self.notebook); self.pkg_tab=ttk.Frame(self.notebook); self.library_tab=ttk.Frame(self.notebook); self.firmware_tab=ttk.Frame(self.notebook); self.tools_tab=ttk.Frame(self.notebook); self.console_tab=ttk.Frame(self.notebook); self.cheats_tab=ttk.Frame(self.notebook); self.scene_tab=ttk.Frame(self.notebook); self.transfers_tab=ttk.Frame(self.notebook)
+        tabs=((self.files_tab,"Archivos","📁  Archivos"),(self.pkg_tab,"Instalador PKG","📦  Instalador PKG"),(self.library_tab,"Biblioteca","🎮  Biblioteca"),(self.firmware_tab,"Firmware","🛡️  Firmware"),(self.tools_tab,"Herramientas GoldHEN","🔧  Herramientas"),(self.console_tab,"Mi PS4","▣  Mi PS4"),(self.cheats_tab,"Cheats & Mods","🎮  Cheats & Mods"),(self.scene_tab,"Scene Hub","📰  Scene Hub"),(self.transfers_tab,"Transferencias","⇅  Transferencias"))
         for i,(frame,title,navtitle) in enumerate(tabs):
             self.notebook.add(frame,text=title); ttk.Button(nav,text=navtitle,style="Nav.TButton",width=20,command=lambda n=i:self.notebook.select(n)).pack(fill=X,pady=3)
-        self._build_files_tab(); self._build_pkg_tab(); self._build_library_tab(); self._build_firmware_tab(); self._build_tools_tab(); self._build_console_tab(); self._build_cheats_tab(); self._build_scene_hub_tab()
+        self._build_files_tab(); self._build_pkg_tab(); self._build_library_tab(); self._build_firmware_tab(); self._build_tools_tab(); self._build_console_tab(); self._build_cheats_tab(); self._build_scene_hub_tab(); self._build_transfers_tab()
         bottom=ttk.Frame(self,padding=(14,7)); bottom.pack(fill=X)
+        self.bottom = bottom
         self.progress=ttk.Progressbar(bottom,mode="determinate",maximum=100); self.progress.pack(fill=X)
         self.status_var=tk.StringVar(value="Listo"); ttk.Label(bottom,textvariable=self.status_var,style="Sub.TLabel").pack(side=LEFT,pady=(5,0))
         ttk.Label(bottom,text=f"PS4 GoldHEN Manager v{APP_VERSION}",style="Sub.TLabel").pack(side=RIGHT,pady=(5,0))
+
+        self.preview_panel = ttk.Frame(self, style="Card.TFrame", padding=(26, 22))
+        ttk.Label(self.preview_panel, text="PS5 · Vista previa",
+                  font=("Segoe UI", 23, "bold"), style="Card.TLabel").pack(anchor="w", pady=(2, 14))
+        for description in (
+            "Esta sección todavía no conecta con la consola.",
+            "FTP GoldHEN, ps4debug y el instalador PKG actual son específicos de PS4.",
+            "La futura integración PS5 tendrá su propio protocolo y pruebas.",
+            "Selecciona PS4 · GoldHEN para volver al administrador funcional."
+        ):
+            ttk.Label(self.preview_panel, text=description,
+                      style="Card.TLabel", wraplength=1000).pack(anchor="w", pady=6)
+        ttk.Button(self.preview_panel, text="Información sobre PS5Upload (proyecto externo)",
+                   command=lambda: webbrowser.open_new_tab(
+                       "https://github.com/phantomptr/ps5upload")).pack(anchor="w", pady=18)
+
+    def _apply_console_profile(self, _event=None, *, initial: bool = False) -> None:
+        target = profile_from_label(self.profile_var.get())
+        if target is PS5 and not initial:
+            if self._ftp_connecting or any(j.state == "running" for j in self.transfers.snapshot()):
+                self.profile_var.set(self.active_profile.label)
+                messagebox.showwarning(APP_NAME, "Termina la conexión o transferencia antes de cambiar de consola.")
+                return
+        if not initial and target is not self.active_profile:
+            self.disconnect_ps4()
+            self.transfers.cancel_pending()
+            self._refresh_transfer_view()
+        self.active_profile = target
+        self.settings.set("console_profile", target.key)
+        if target is PS5:
+            self.connection_panel.pack_forget()
+            self.services_panel.pack_forget()
+            self.workspace.pack_forget()
+            self.preview_panel.pack(fill=BOTH, expand=True, padx=14, pady=10, before=self.bottom)
+            self.status_var.set("PS5 en vista previa · Operaciones desactivadas")
+        else:
+            self.preview_panel.pack_forget()
+            if not self.connection_panel.winfo_manager():
+                self.connection_panel.pack(fill=X, padx=14, pady=(8, 4), before=self.bottom)
+            if not self.services_panel.winfo_manager():
+                self.services_panel.pack(fill=X, padx=14, pady=(0, 7), before=self.bottom)
+            if not self.workspace.winfo_manager():
+                self.workspace.pack(fill=BOTH, expand=True, padx=14, before=self.bottom)
+            self.status_var.set("PS4 · GoldHEN disponible")
 
     # ---------- Scene Hub: noticias y versiones (sin modificar servicios PS4) ----------
     def _build_scene_hub_tab(self) -> None:
@@ -1921,7 +1983,7 @@ class PS4ManagerApp(tk.Tk):
         self.run_async(task,on_done=done,on_error=lambda e:self.console_status_var.set(f"Error: {e}"))
 
     def _startup_auto_connect(self):
-        if not self.ftp.connected:
+        if getattr(self, 'active_profile', PS4) is PS4 and not self.ftp.connected:
             self.scan_ps4()
 
     def _resolve_game_title(self, title_id: str, fallback: str = "") -> str:
@@ -2282,6 +2344,8 @@ class PS4ManagerApp(tk.Tk):
                     self._apply_service_state(payload)
                 elif kind == "pkg_task":
                     self._apply_pkg_task_progress(payload)
+                elif kind == "transfer_refresh":
+                    self._refresh_transfer_view()
                 elif kind == "done":
                     if callback:
                         callback(payload)
@@ -2876,31 +2940,9 @@ class PS4ManagerApp(tk.Tk):
         self.run_async(task, on_done=lambda _r: self.refresh_remote(), on_error=lambda e: messagebox.showerror(APP_NAME, f"Error al borrar:\n{e}"))
 
     # ---------- transfers ----------
-    def _upload_paths(self, selected: list[Path], base_remote: str, completion_label: str = "Subida completada") -> None:
-        self.progress["value"] = 0
-
-        def upload_path(local: Path, remote: str):
-            if local.is_dir():
-                self.ftp.ensure_dir(remote)
-                for child in sorted(local.iterdir(), key=lambda p: p.name.lower()):
-                    upload_path(child, posixpath.join(remote, child.name))
-            else:
-                label = f"Subiendo {local.name}"
-                self.ftp.upload_file(local, remote, lambda c, t: self.post_progress(c, t, label))
-
-        def task():
-            self.ftp.ensure_dir(base_remote)
-            for p in selected:
-                upload_path(p, posixpath.join(base_remote, p.name))
-
-        def done(_r):
-            self.progress["value"] = 100
-            self.status_var.set(completion_label)
-            self.refresh_remote()
-            if self.notify_transfer_var.get():
-                self.send_ps4_notification(f"{APP_NAME}\n{completion_label}", silent=True)
-
-        self.run_async(task, on_done=done, on_error=lambda e: messagebox.showerror(APP_NAME, f"Error durante la subida:\n{e}"))
+    def _upload_paths(self, selected: list[Path], base_remote: str,
+                      completion_label: str = "Subida completada") -> None:
+        self.queue_upload_paths(selected, base_remote, completion_label)
 
     def upload_selected(self) -> None:
         if not self.require_connection():
@@ -2923,36 +2965,7 @@ class PS4ManagerApp(tk.Tk):
         self._upload_paths(files, "/data/pkg", completion_label=f"{len(files)} PKG subido(s) a /data/pkg")
 
     def download_selected(self) -> None:
-        if not self.require_connection():
-            return
-        selected = [self.remote_items[i] for i in self.remote_tree.selection() if i in self.remote_items]
-        if not selected:
-            messagebox.showinfo(APP_NAME, "Selecciona archivos o carpetas en el panel de la PS4.")
-            return
-        base_local = self.local_path
-        self.progress["value"] = 0
-
-        def download_item(item: RemoteItem, local_target: Path):
-            if item.is_dir:
-                local_target.mkdir(parents=True, exist_ok=True)
-                for child in self.ftp.listdir(item.path):
-                    download_item(child, local_target / child.name)
-            else:
-                label = f"Descargando {item.name}"
-                self.ftp.download_file(item.path, local_target, lambda c, t: self.post_progress(c, t, label))
-
-        def task():
-            for item in selected:
-                download_item(item, base_local / item.name)
-
-        def done(_r):
-            self.progress["value"] = 100
-            self.status_var.set("Descarga completada")
-            self.refresh_local()
-            if self.notify_transfer_var.get():
-                self.send_ps4_notification(f"{APP_NAME}\nDescarga al PC completada.", silent=True)
-
-        self.run_async(task, on_done=done, on_error=lambda e: messagebox.showerror(APP_NAME, f"Error durante la descarga:\n{e}"))
+        self.queue_download_selected()
 
     # ---------- remote PKG installer ----------
     def add_pkg_files(self) -> None:

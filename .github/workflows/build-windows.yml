@@ -5,11 +5,14 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feature/scene-hub-integration]
+    branches: [main, feature/scene-hub-integration, feature/multiconsole-transfer-queue]
     paths:
       - 'ps4_manager.py'
       - 'scene_hub.py'
       - 'scene_queue.py'
+      - 'console_profiles.py'
+      - 'transfer_queue.py'
+      - 'transfer_ui.py'
       - 'scene_news.json'
       - 'tests/**'
       - 'requirements.txt'
@@ -39,7 +42,7 @@ jobs:
 
       - name: Validate sources
         run: |
-          python -m py_compile ps4_manager.py scene_hub.py scene_queue.py
+          python -m py_compile ps4_manager.py scene_hub.py scene_queue.py console_profiles.py transfer_queue.py transfer_ui.py
           python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Resolve version
