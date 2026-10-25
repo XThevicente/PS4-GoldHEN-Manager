@@ -31,11 +31,12 @@ from tkinter import ttk
 from console_profiles import PS4, PS5, PROFILES, get_profile, profile_from_label
 from transfer_queue import TransferQueue
 from transfer_ui import TransferMixin
+from resumable_ftp import ResumableFTP
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.4"
+APP_VERSION = "1.1.0-beta.5"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -873,7 +874,28 @@ class FTPClient:
         with self.lock:
             self.ftp.rmd(path)
 
-    def upload_file(self, local_path: Path, remote_path: str, progress=None) -> None:
+    def remote_size(self, remote_path: str) -> int | None:
+        if not self.ftp:
+            raise RuntimeError("No conectado")
+        with self.lock:
+            try:
+                self.ftp.voidcmd("TYPE I")
+                return self.ftp.size(remote_path)
+            except ftplib.error_perm as exc:
+                if str(exc).startswith("550"):
+                    return None
+                raise
+
+    def remote_sha256(self, remote_path: str) -> str:
+        if not self.ftp:
+            raise RuntimeError("No conectado")
+        digest = hashlib.sha256()
+        with self.lock:
+            self.ftp.retrbinary(f"RETR {remote_path}", digest.update,
+                                blocksize=256 * 1024)
+        return digest.hexdigest()
+
+    def upload_file(self, local_path: Path, remote_path: str, progress=None, *, rest: int = 0) -> None:
         if not self.ftp:
             raise RuntimeError("No conectado")
         total = local_path.stat().st_size
@@ -886,9 +908,12 @@ class FTPClient:
                 progress(sent, total)
 
         with self.lock, local_path.open("rb") as f:
-            self.ftp.storbinary(f"STOR {remote_path}", f, blocksize=256 * 1024, callback=callback)
+            if rest:
+                f.seek(rest)
+            self.ftp.storbinary(f"STOR {remote_path}", f, blocksize=256 * 1024,
+                                callback=callback, rest=rest if rest else None)
 
-    def download_file(self, remote_path: str, local_path: Path, progress=None) -> None:
+    def download_file(self, remote_path: str, local_path: Path, progress=None, *, rest: int = 0) -> None:
         if not self.ftp:
             raise RuntimeError("No conectado")
         total = None
@@ -897,10 +922,11 @@ class FTPClient:
                 total = self.ftp.size(remote_path)
             except Exception:
                 total = None
-        received = 0
+        received = rest
         local_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with local_path.open("wb") as f:
+        if rest and (not local_path.exists() or local_path.stat().st_size != rest):
+            raise ValueError("Tamaño del temporal local inesperado")
+        with local_path.open("ab" if rest else "wb") as f:
             def callback(block: bytes):
                 nonlocal received
                 f.write(block)
@@ -909,7 +935,8 @@ class FTPClient:
                     progress(received, total)
 
             with self.lock:
-                self.ftp.retrbinary(f"RETR {remote_path}", callback, blocksize=256 * 1024)
+                self.ftp.retrbinary(f"RETR {remote_path}", callback, blocksize=256 * 1024,
+                                    rest=rest if rest else None)
 
 
 class PS4ManagerApp(TransferMixin, tk.Tk):
