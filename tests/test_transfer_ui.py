@@ -18,6 +18,11 @@ class FakeApp(TransferMixin):
         self.active_profile = PS4
         self.ftp = Mock()
         self.ftp.connected = True
+        self.ftp.remote_size.return_value = None
+        import hashlib
+        self.ftp.remote_sha256.side_effect = lambda path: hashlib.sha256(self._remote[path]).hexdigest()
+        self._remote = {}
+        self.ftp.rename.side_effect = lambda a, b: self._remote.__setitem__(b, self._remote.pop(a))
         self.transfers = TransferQueue()
         self._transfer_runners = {}
         self._last_transfer_redraw = 0.0
@@ -55,8 +60,12 @@ class TransferFlowTests(unittest.TestCase):
             a.write_bytes(b"abcd")
             b.write_bytes(b"efgh")
 
-            def fake_upload(local, remote, cb):
+            def fake_upload(local, remote, cb, *, rest=0):
+                self.assertEqual(rest, 0)
+                app._remote[remote] = local.read_bytes()
                 cb(local.stat().st_size, local.stat().st_size)
+            app.ftp.remote_size.side_effect = lambda path: (
+                len(app._remote[path]) if path in app._remote else None)
 
             app.ftp.upload_file.side_effect = fake_upload
             app.queue_upload_paths([a, b], "/data")
@@ -77,6 +86,11 @@ class TransferFlowTests(unittest.TestCase):
             files = [Path(tmp) / str(i) for i in range(2)]
             for path in files:
                 path.write_bytes(b"x")
+            app.ftp.remote_size.side_effect = lambda path: (
+                len(app._remote[path]) if path in app._remote else None)
+            app.ftp.upload_file.side_effect = lambda local, remote, cb, *, rest=0: (
+                app._remote.__setitem__(remote, local.read_bytes()),
+                cb(local.stat().st_size, local.stat().st_size))
             app.queue_upload_paths(files, "/data")
             app._cancel_pending_transfers()
             self.assertEqual([j.state for j in app.transfers.snapshot()],
@@ -97,8 +111,15 @@ class TransferFlowTests(unittest.TestCase):
             files = [Path(tmp) / str(i) for i in range(2)]
             for path in files:
                 path.write_bytes(b"x")
+            app.ftp.remote_size.side_effect = lambda path: (
+                len(app._remote[path]) if path in app._remote else None)
             app.queue_upload_paths(files, "/data")
-            app.ftp.upload_file.side_effect = [OSError("FTP disconnected"), None]
+            def upload_with_failure(local, remote, cb, *, rest=0):
+                if local.name == "0":
+                    raise OSError("FTP disconnected")
+                app._remote[remote] = local.read_bytes()
+                cb(local.stat().st_size, local.stat().st_size)
+            app.ftp.upload_file.side_effect = upload_with_failure
             app.work_one()
             self.assertEqual([j.state for j in app.transfers.snapshot()],
                              ["failed", "running"])
