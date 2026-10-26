@@ -3,6 +3,13 @@
   "site": "https://itrsr62yvx.zite.so",
   "news": [
     {
+      "title": "Remote PKG Installer v3.57 mejora la estabilidad y añade diagnósticos en PS4",
+      "description": "Ari anuncia sincronización con mutex para las tareas, protección frente a fallos y dashboard de diagnóstico local en el puerto 12801; son cambios comunicados por el autor, aún sin verificar en hardware propio.",
+      "section": "PS4",
+      "date": "2026-10-26",
+      "url": "https://itrsr62yvx.zite.so/?news=bb8fe437-e1c9-4f8c-aed5-c87afad31574"
+    },
+    {
       "title": "OrbisNet anuncia beta abierta de multijugador en PS4 con más de 60 juegos",
       "description": "La comunidad OrbisNet prueba juego online entre PS4 con jailbreak sin servidores oficiales de PSN. Beta experimental: revisa compatibilidad y fuentes originales.",
       "section": "PS4",
