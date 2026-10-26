@@ -31,12 +31,13 @@ from tkinter import ttk
 from console_profiles import PS4, PS5, PROFILES, get_profile, profile_from_label
 from transfer_queue import TransferQueue
 from transfer_ui import TransferMixin
+from orbisnet_hub import OrbisNetMixin
 from resumable_ftp import ResumableFTP
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.5"
+APP_VERSION = "1.1.0-beta.6"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -939,7 +940,7 @@ class FTPClient:
                                     rest=rest if rest else None)
 
 
-class PS4ManagerApp(TransferMixin, tk.Tk):
+class PS4ManagerApp(OrbisNetMixin, TransferMixin, tk.Tk):
     @staticmethod
     def _resource_path(*parts: str) -> Path:
         # PyInstaller one-file extracts bundled resources below sys._MEIPASS.
@@ -1113,11 +1114,11 @@ class PS4ManagerApp(TransferMixin, tk.Tk):
         self.workspace = workspace
         nav=ttk.Frame(workspace,style="Card.TFrame",padding=(5,8)); nav.pack(side=LEFT,fill=Y,padx=(0,8))
         self.notebook=ttk.Notebook(workspace, style="Hidden.TNotebook"); self.notebook.pack(side=LEFT,fill=BOTH,expand=True)
-        self.files_tab=ttk.Frame(self.notebook); self.pkg_tab=ttk.Frame(self.notebook); self.library_tab=ttk.Frame(self.notebook); self.firmware_tab=ttk.Frame(self.notebook); self.tools_tab=ttk.Frame(self.notebook); self.console_tab=ttk.Frame(self.notebook); self.cheats_tab=ttk.Frame(self.notebook); self.scene_tab=ttk.Frame(self.notebook); self.transfers_tab=ttk.Frame(self.notebook)
-        tabs=((self.files_tab,"Archivos","📁  Archivos"),(self.pkg_tab,"Instalador PKG","📦  Instalador PKG"),(self.library_tab,"Biblioteca","🎮  Biblioteca"),(self.firmware_tab,"Firmware","🛡️  Firmware"),(self.tools_tab,"Herramientas GoldHEN","🔧  Herramientas"),(self.console_tab,"Mi PS4","▣  Mi PS4"),(self.cheats_tab,"Cheats & Mods","🎮  Cheats & Mods"),(self.scene_tab,"Scene Hub","📰  Scene Hub"),(self.transfers_tab,"Transferencias","⇅  Transferencias"))
+        self.files_tab=ttk.Frame(self.notebook); self.pkg_tab=ttk.Frame(self.notebook); self.library_tab=ttk.Frame(self.notebook); self.firmware_tab=ttk.Frame(self.notebook); self.tools_tab=ttk.Frame(self.notebook); self.console_tab=ttk.Frame(self.notebook); self.cheats_tab=ttk.Frame(self.notebook); self.scene_tab=ttk.Frame(self.notebook); self.transfers_tab=ttk.Frame(self.notebook); self.orbisnet_tab=ttk.Frame(self.notebook)
+        tabs=((self.files_tab,"Archivos","📁  Archivos"),(self.pkg_tab,"Instalador PKG","📦  Instalador PKG"),(self.library_tab,"Biblioteca","🎮  Biblioteca"),(self.firmware_tab,"Firmware","🛡️  Firmware"),(self.tools_tab,"Herramientas GoldHEN","🔧  Herramientas"),(self.console_tab,"Mi PS4","▣  Mi PS4"),(self.cheats_tab,"Cheats & Mods","🎮  Cheats & Mods"),(self.scene_tab,"Scene Hub","📰  Scene Hub"),(self.transfers_tab,"Transferencias","⇅  Transferencias"),(self.orbisnet_tab,"OrbisNet · Online","🌐  OrbisNet Online"))
         for i,(frame,title,navtitle) in enumerate(tabs):
             self.notebook.add(frame,text=title); ttk.Button(nav,text=navtitle,style="Nav.TButton",width=20,command=lambda n=i:self.notebook.select(n)).pack(fill=X,pady=3)
-        self._build_files_tab(); self._build_pkg_tab(); self._build_library_tab(); self._build_firmware_tab(); self._build_tools_tab(); self._build_console_tab(); self._build_cheats_tab(); self._build_scene_hub_tab(); self._build_transfers_tab()
+        self._build_files_tab(); self._build_pkg_tab(); self._build_library_tab(); self._build_firmware_tab(); self._build_tools_tab(); self._build_console_tab(); self._build_cheats_tab(); self._build_scene_hub_tab(); self._build_transfers_tab(); self._build_orbisnet_tab()
         bottom=ttk.Frame(self,padding=(14,7)); bottom.pack(fill=X)
         self.bottom = bottom
         self.progress=ttk.Progressbar(bottom,mode="determinate",maximum=100); self.progress.pack(fill=X)
