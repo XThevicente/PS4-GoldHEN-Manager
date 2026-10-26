@@ -56,6 +56,20 @@ La versión estable `v1.0.0` permanece sin cambios. No hay reanudación
 automática de transferencias, soporte PS5 funcional ni copia de código GPL-3.0
 de PS5Upload.
 
+## Beta 1.1.0-beta.6 — OrbisNet Online (rama de pruebas)
+
+Incorpora una pestaña **OrbisNet · Online** independiente, con buscador de ejemplos de
+juegos, enlaces controlados a la web, Discord y al anuncio del desarrollador.
+Se integra con las anteriores funcionalidades experimentales de cola FTP y PS5
+en vista previa. OrbisNet es una beta externa y no se instala, descarga ni ejecuta
+automáticamente desde el Manager. No hay integración con su API ni servidores.
+
+**[Consultar la rama OrbisNet](https://github.com/XThevicente/PS4-GoldHEN-Manager/tree/feature/orbisnet-online-hub)**.
+Fuente: [anuncio del autor 25/10/2026](https://www.reddit.com/r/ps4homebrew/comments/1xeory8/playstation_4_online_without_psn_on_jailbroken/).
+Web: https://orbisnet.app/
+
+La release pública v1.0.0 permanece sin modificaciones.
+
 ## Features
 
 - **Automatic PS4 discovery** on the local network.
