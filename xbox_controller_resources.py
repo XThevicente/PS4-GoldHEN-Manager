@@ -118,7 +118,9 @@ def prepare_plugins_ini(original: bytes) -> tuple[bytes, bool]:
 
 def local_ini_preview(ftp, out_dir: Path) -> tuple[Path | None, Path, bool]:
     """Download read-only config, then create a local candidate. No remote writes."""
-    out_dir.mkdir(parents=True, exist_ok=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if any(out_dir.iterdir()):
+        raise FileExistsError("El directorio de backup no está vacío")
     backup = out_dir / "plugins.ini.original"
     remote_missing = False
     try:
