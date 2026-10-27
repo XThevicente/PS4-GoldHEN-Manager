@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feature/scene-hub-integration, feature/multiconsole-transfer-queue, feature/resumable-ftp-ps5-adapter, feature/orbisnet-online-hub, feature/rpi-357-dashboard]
+    branches: [main, feature/scene-hub-integration, feature/multiconsole-transfer-queue, feature/resumable-ftp-ps5-adapter, feature/orbisnet-online-hub, feature/rpi-357-dashboard, feature/xcloud4-resources]
     paths:
       - 'ps4_manager.py'
       - 'scene_hub.py'
@@ -17,6 +17,7 @@ on:
       - 'ps5_adapter.py'
       - 'orbisnet_hub.py'
       - 'rpi_dashboard.py'
+      - 'xcloud4_resources.py'
       - 'scene_news.json'
       - 'tests/**'
       - 'requirements.txt'
@@ -46,7 +47,7 @@ jobs:
 
       - name: Validate sources
         run: |
-          python -m py_compile ps4_manager.py scene_hub.py scene_queue.py console_profiles.py transfer_queue.py transfer_ui.py resumable_ftp.py ps5_adapter.py orbisnet_hub.py rpi_dashboard.py
+          python -m py_compile ps4_manager.py scene_hub.py scene_queue.py console_profiles.py transfer_queue.py transfer_ui.py resumable_ftp.py ps5_adapter.py orbisnet_hub.py rpi_dashboard.py xcloud4_resources.py
           python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Resolve version
