@@ -32,12 +32,13 @@ from console_profiles import PS4, PS5, PROFILES, get_profile, profile_from_label
 from transfer_queue import TransferQueue
 from transfer_ui import TransferMixin
 from orbisnet_hub import OrbisNetMixin
+from rpi_dashboard import RPIDashboardMixin, RPI_RELEASES_URL
 from resumable_ftp import ResumableFTP
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.6"
+APP_VERSION = "1.1.0-beta.7"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -940,7 +941,7 @@ class FTPClient:
                                     rest=rest if rest else None)
 
 
-class PS4ManagerApp(OrbisNetMixin, TransferMixin, tk.Tk):
+class PS4ManagerApp(RPIDashboardMixin, OrbisNetMixin, TransferMixin, tk.Tk):
     @staticmethod
     def _resource_path(*parts: str) -> Path:
         # PyInstaller one-file extracts bundled resources below sys._MEIPASS.
@@ -1522,6 +1523,18 @@ class PS4ManagerApp(OrbisNetMixin, TransferMixin, tk.Tk):
         ttk.Button(bar, text="Instalar como partes", command=self.install_selected_as_parts).pack(side=LEFT, padx=(6, 0))
         ttk.Button(bar, text="Subir a /data/pkg", command=self.upload_pkg_from_installer_tab).pack(side=LEFT, padx=(6, 0))
         ttk.Button(bar, text="Comprobar RPI", command=self.check_rpi).pack(side=RIGHT)
+        rpi_panel = ttk.Frame(wrap, style="Card.TFrame", padding=(12, 9))
+        rpi_panel.pack(fill=X, pady=(0, 8))
+        ttk.Label(rpi_panel, text="ARI RPI v3.57 · Panel web :12801",
+                  style="Card.TLabel").pack(side=LEFT, padx=(0, 14))
+        ttk.Button(rpi_panel, text="Abrir panel",
+                   command=self.open_rpi_dashboard).pack(side=LEFT, padx=(0, 7))
+        ttk.Button(rpi_panel, text="Diagnósticos",
+                   command=self.open_rpi_diagnostics).pack(side=LEFT, padx=(0, 7))
+        ttk.Button(rpi_panel, text="Releases oficiales",
+                   command=lambda: webbrowser.open_new_tab(RPI_RELEASES_URL)).pack(side=RIGHT)
+        ttk.Label(rpi_panel, text="Requiere RPI abierto en PS4; no instala ni descarga nada.",
+                  style="Card.TLabel").pack(side=RIGHT, padx=(0, 10))
 
         server = ttk.Frame(wrap, style="Card.TFrame", padding=10)
         server.pack(fill=X, pady=(0, 8))

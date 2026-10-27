@@ -70,6 +70,27 @@ Web: https://orbisnet.app/
 
 La release pública v1.0.0 permanece sin modificaciones.
 
+## Beta 1.1.0-beta.7 — Remote PKG Installer v3.57
+
+Añade dos accesos desde «Instalador PKG»: panel web de Ari y log de diagnóstico
+`/api/log`, ambos en el puerto local **12801**. Este panel pertenece a la
+app **Remote Package Installer v3.57** que hayas instalado y abierto en la PS4;
+nuestro Manager sólo abre esas direcciones en el navegador tras tu confirmación,
+nunca envía comandos nuevos ni reproduce endpoints destructivos.
+
+El gestor clásico de instalación continúa utilizando el protocolo RPI anterior
+en el puerto **12800**. No se presupone que ambas versiones compartan todas
+las rutas/API. Comprueba con tu consola la compatibilidad real. Las direcciones
+locales se restringen a IPv4 privadas RFC1918 (no se abren IP públicas,
+dominios externos ni URL introducidas como host). No publiques el panel en
+Internet; el log puede incluir detalles sensibles de tu instalación.
+
+Repositorio de Ari:
+https://codeberg.org/rawblue33/Remote-PKG-Installer-v3.53/releases
+
+La noticia y el código describen cambios anunciados por el desarrollador, no
+una garantía de cero errores. La v1.0.0 estable sigue intacta.
+
 ## Features
 
 - **Automatic PS4 discovery** on the local network.
