@@ -112,6 +112,31 @@ La verificación local comprueba que el archivo coincide con los bytes publicado
 seguridad exhaustiva. No se ha probado en nuestra consola. Se conserva la
 release estable v1.0.0 sin alteraciones.
 
+## Beta 1.1.0-beta.9 — Xbox Controller Plugin v1.4.2 (asistente seguro)
+
+Pestaña **Mandos Xbox** con accesos a las releases originales de ChiricoG
+y validación local de **ambos** archivos antes de instalarlos:
+- `xbox_controller.prx`: 108.752 bytes, SHA-256 `d9c104e824ff76f868dc60935b876866f5cb73259e7283f046e4f6d9f97b970b`.
+- `xbox_controller_configurator.pkg`: 8.192.000 bytes, SHA-256 `53618788062f572d9a28862ded36894826f9a2ac024ead5668958170cc488bb4`.
+
+El asistente permite, tras confirmación, **subir sólo un PRX previamente validado**
+mediante FTP a `/data/GoldHEN/plugins/xbox_controller.prx`, con staging,
+verificación SHA-256 y sin sobrescribir el PRX existente. **No lo activa**.
+
+Otra acción hace copia local de `/data/GoldHEN/plugins.ini` y genera una
+**propuesta local** con la ruta del plugin bajo `[default]`, preservando el
+resto de secciones y entradas. No envía cambios al archivo de configuración
+de la PS4; revísalos antes de utilizar el gestor FTP para realizar el cambio
+manualmente. Nunca se edita automáticamente plugins.ini.
+
+La versión 1.4.2 permite mandos USB compatibles Xbox/XInput/PDP en juegos y
+homebrew. **NO** permite navegar el XMB nativo ni habilita Bluetooth.
+El configurador PKG es opcional. El proyecto es externo, no afiliado,
+sin compatibilidad garantizada con nuestra PS4. La release estable v1.0.0
+no se modifica.
+
+Fuente: https://github.com/ChiricoG/xbox_controller_plugin/releases/tag/v1.4.2
+
 ## Features
 
 - **Automatic PS4 discovery** on the local network.

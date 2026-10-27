@@ -9,7 +9,7 @@ echo ==============================================
 py -3 -m pip install --upgrade -r requirements.txt
 if errorlevel 1 goto :error
 
-py -3 -m py_compile ps4_manager.py scene_hub.py scene_queue.py console_profiles.py transfer_queue.py transfer_ui.py resumable_ftp.py ps5_adapter.py orbisnet_hub.py rpi_dashboard.py xcloud4_resources.py
+py -3 -m py_compile ps4_manager.py scene_hub.py scene_queue.py console_profiles.py transfer_queue.py transfer_ui.py resumable_ftp.py ps5_adapter.py orbisnet_hub.py rpi_dashboard.py xcloud4_resources.py xbox_controller_resources.py
 if errorlevel 1 goto :error
 py -3 -m unittest discover -s tests -p "test_*.py" -v
 if errorlevel 1 goto :error
