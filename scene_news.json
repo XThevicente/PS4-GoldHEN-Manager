@@ -3,6 +3,13 @@
   "site": "https://itrsr62yvx.zite.so",
   "news": [
     {
+      "title": "PlayBridge Desktop: próxima herramienta de streaming PKG para PS4 y PS5",
+      "description": "Rawblue33 muestra una vista previa con HTTP Range, NAS, progreso BGFT y PKG divididos. Es un anuncio sin release pública verificable; el repositorio anunciado no está accesible.",
+      "section": "PS4",
+      "date": "2026-10-27",
+      "url": "https://itrsr62yvx.zite.so/?news=9a13273d-b222-40c4-8636-e274d5402a4b"
+    },
+    {
       "title": "Xbox Controller Plugin v1.4.2: mandos Xbox y XInput con calibración en PS4",
       "description": "ChiricoG publica soporte de mandos USB Xbox/XInput y homebrew junto con app configuradora. v1.4.2 incorpora pruebas en directo, zona muerta automática y vibración. No controla el XMB nativo.",
       "section": "PS4",
