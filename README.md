@@ -91,6 +91,27 @@ https://codeberg.org/rawblue33/Remote-PKG-Installer-v3.53/releases
 La noticia y el código describen cambios anunciados por el desarrollador, no
 una garantía de cero errores. La v1.0.0 estable sigue intacta.
 
+## Beta 1.1.0-beta.8 — XCloud4 (recurso externo)
+
+Se añade una tarjeta XCloud4 en «Herramientas GoldHEN» con enlaces al
+lanzamiento oficial, código fuente y comprobación SHA-256 de un PKG elegido
+**manualmente** en tu equipo. La aplicación verifica el tamaño y el hash
+publicados por su desarrollador; no descarga, ejecuta, instala ni incluye
+el PKG. Tampoco pide contraseñas ni credenciales Microsoft/Xbox.
+
+- Release: https://github.com/asp11edgr/XCloud4/releases/tag/v1.2.0-beta
+- Versión: 1.2.0-beta, 27 de octubre de 2026.
+- Archivo oficial: `XCloud4-1.2.0-beta-publico.pkg`, tamaño 16.646.144 bytes.
+- SHA-256: `457473f98c9acc16c7f217781331271985f3a716172bdf2f439373222f7b4209`.
+- Probado por el autor: PS4 Fat, FW 12.00 y GoldHEN 2.4b18.7.
+- Los juegos de suscripción requieren un plan Game Pass con cloud gaming;
+  Fortnite no necesita Game Pass, pero sí cuenta Microsoft/Xbox y disponibilidad regional.
+
+La verificación local comprueba que el archivo coincide con los bytes publicados,
+**no** garantiza que sea compatible con todos los firmwares ni una validación de
+seguridad exhaustiva. No se ha probado en nuestra consola. Se conserva la
+release estable v1.0.0 sin alteraciones.
+
 ## Features
 
 - **Automatic PS4 discovery** on the local network.
