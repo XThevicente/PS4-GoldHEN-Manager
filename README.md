@@ -137,6 +137,32 @@ no se modifica.
 
 Fuente: https://github.com/ChiricoG/xbox_controller_plugin/releases/tag/v1.4.2
 
+## Beta 1.1.0-beta.10 — HTTP Range QA para streaming PKG
+
+Inspirado por las ideas anunciadas de PlayBridge Desktop (no se ha copiado su código
+ni existe una release verificable a fecha de 27/10/2026), el Manager refuerza su
+**servidor HTTP Range existente**; no se presenta como un nuevo cliente NAS/PS5.
+
+- Parser de rango único RFC 9110: `bytes=0-9`, `bytes=10-`, `bytes=-10`.
+  Rangos inválidos, vacíos, múltiples o fuera de los límites devuelven HTTP 416.
+- En peticiones `GET` con `If-Range`, si el validador ETag no coincide, se
+  sirve el recurso completo (200) en lugar de devolver un fragmento antiguo.
+- ETag generado a partir de metadatos del archivo abierto, no SHA-256.
+  `HEAD` devuelve metadatos completos (200), ignorando `Range`.
+- Pruebas HTTP de integración en `127.0.0.1`: cabeceras, bytes exactos,
+  concurrencia de dos lectores, ruta no registrada y archivo vacío.
+- Se mantienen las funciones existentes de RPI :12800, progreso BGFT y
+  pausar/reanudar/cancelar tareas. No hay cola persistente de instalaciones,
+  streaming NAS, unificador de PKG partidos ni integración PS5 funcional.
+- **Limitación**: un origen modificado en el mismo archivo durante una
+  descarga podría producir una transferencia inconsistente. No hay snapshots
+  inmutables; evitar modificar PKG mientras se instala.
+
+Roadmap y evidencia: https://github.com/XThevicente/PS4-GoldHEN-Manager/issues/14
+
+La v1.0.0 estable sigue intacta. Es imprescindible validar contra RPI
+y una PS4 física antes de publicar una release general.
+
 ## Features
 
 - **Automatic PS4 discovery** on the local network.
