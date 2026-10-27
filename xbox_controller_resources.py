@@ -244,6 +244,13 @@ class XboxControllerMixin:
         self.status_var.set("Subiendo plugin verificado, sin activar…")
 
         def task():
+            # Do not trust SIZE=550 alone: it can indicate permission errors.
+            # Demand an actual listing and reject any pre-existing final name.
+            remote_files = self.ftp.listdir("/data/GoldHEN/plugins")
+            if any(item.name.casefold() == "xbox_controller.prx" for item in remote_files):
+                raise FileExistsError(
+                    "Ya existe xbox_controller.prx. Haz copia y gestiona la "
+                    "actualización manualmente; no se sobrescribe.")
             # Remote read-back validates the written bytes before final rename.
             ResumableFTP(self.ftp, verify_sha256=True).upload(
                 verified.path, PLUGIN_PATH, lambda current, total, phase: self.post_progress(
