@@ -33,12 +33,13 @@ from transfer_queue import TransferQueue
 from transfer_ui import TransferMixin
 from orbisnet_hub import OrbisNetMixin
 from rpi_dashboard import RPIDashboardMixin, RPI_RELEASES_URL
+from xcloud4_resources import XCloud4Mixin
 from resumable_ftp import ResumableFTP
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.7"
+APP_VERSION = "1.1.0-beta.8"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -941,7 +942,7 @@ class FTPClient:
                                     rest=rest if rest else None)
 
 
-class PS4ManagerApp(RPIDashboardMixin, OrbisNetMixin, TransferMixin, tk.Tk):
+class PS4ManagerApp(XCloud4Mixin, RPIDashboardMixin, OrbisNetMixin, TransferMixin, tk.Tk):
     @staticmethod
     def _resource_path(*parts: str) -> Path:
         # PyInstaller one-file extracts bundled resources below sys._MEIPASS.
@@ -1936,6 +1937,7 @@ class PS4ManagerApp(RPIDashboardMixin, OrbisNetMixin, TransferMixin, tk.Tk):
         ttk.Button(left, text="Iniciar Klog", command=self.start_klog).pack(fill=X, pady=4)
         ttk.Button(left, text="Detener Klog", command=self.stop_klog).pack(fill=X, pady=4)
         ttk.Button(left, text="Limpiar Klog", command=lambda: self.klog_text.delete("1.0", END)).pack(fill=X, pady=4)
+        self._build_xcloud4_resources(left)
 
         info = (
             "Los avisos usan ps4debug-NG únicamente como puente de notificaciones. "

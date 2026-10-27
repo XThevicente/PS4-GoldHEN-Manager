@@ -3,6 +3,13 @@
   "site": "https://itrsr62yvx.zite.so",
   "news": [
     {
+      "title": "Xbox Controller Plugin v1.4.2: mandos Xbox y XInput con calibración en PS4",
+      "description": "ChiricoG publica soporte de mandos USB Xbox/XInput y homebrew junto con app configuradora. v1.4.2 incorpora pruebas en directo, zona muerta automática y vibración. No controla el XMB nativo.",
+      "section": "PS4",
+      "date": "2026-10-27",
+      "url": "https://itrsr62yvx.zite.so/?news=5b91e7cc-6538-470d-9336-6d63c83656cd"
+    },
+    {
       "title": "XCloud4 v1.2.0-beta: Xbox Cloud Gaming y Fortnite en PS4 con GoldHEN",
       "description": "Nueva versión con Fortnite sin suscripción Game Pass donde esté disponible, modos 1080p60, elección de servidor y gestión de colas. Solo probado por su autor en PS4 Fat 12.00 con GoldHEN 2.4b18.7.",
       "section": "PS4",
