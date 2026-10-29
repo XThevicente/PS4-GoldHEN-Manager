@@ -36,11 +36,12 @@ from rpi_dashboard import RPIDashboardMixin, RPI_RELEASES_URL
 from xcloud4_resources import XCloud4Mixin
 from xbox_controller_resources import XboxControllerMixin
 from resumable_ftp import ResumableFTP
+from http_range import UnsatisfiableRange, effective_range, strong_etag
 from scene_hub import HUB_URL, RELEASES_URL, fetch_scene_bundle, is_update_available
 from scene_queue import PAIRING_PAGE, create_pairing_code, fetch_account_queue, read_export_file, valid_https_link
 
 APP_NAME = "PS4 GoldHEN Manager"
-APP_VERSION = "1.1.0-beta.9"
+APP_VERSION = "1.1.0-beta.10"
 
 FTP_PORT = 2121
 BINLOADER_PORT = 9090
@@ -588,66 +589,64 @@ class RangePackageServer:
                 self._serve(True)
 
             def _serve(self, send_body: bool):
+                # Only exact explicitly registered routes are exposed.
                 route = urllib.parse.urlsplit(self.path).path
                 with outer.lock:
                     file_path = outer.files.get(route)
-                if not file_path or not file_path.exists() or not file_path.is_file():
+                if not file_path or not file_path.is_file():
                     self.send_error(404, "PKG no registrado")
                     return
-                size = file_path.stat().st_size
-                start, end = 0, max(0, size - 1)
-                status = 200
-                range_header = self.headers.get("Range", "").strip()
-                if range_header:
-                    m = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header)
-                    if not m:
-                        self.send_response(416)
-                        self.send_header("Content-Range", f"bytes */{size}")
-                        self.send_header("Content-Length", "0")
-                        self.end_headers()
-                        return
-                    a, b = m.groups()
-                    if a == "" and b:
-                        suffix = min(int(b), size)
-                        start = size - suffix
-                    elif a:
-                        start = int(a)
-                        if b:
-                            end = min(int(b), size - 1)
-                    if start >= size or start < 0 or end < start:
-                        self.send_response(416)
-                        self.send_header("Content-Range", f"bytes */{size}")
-                        self.send_header("Content-Length", "0")
-                        self.end_headers()
-                        return
-                    status = 206
-                length = 0 if size == 0 else end - start + 1
-                self.send_response(status)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Accept-Ranges", "bytes")
-                self.send_header("Content-Length", str(length))
-                if status == 206:
-                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-                self.send_header("Connection", "close")
-                self.end_headers()
-                with outer.lock:
-                    outer.requests += 1
-                if not send_body or length <= 0:
-                    return
-                remaining = length
                 try:
-                    with file_path.open("rb") as f:
-                        f.seek(start)
+                    handle = file_path.open("rb")
+                except OSError:
+                    self.send_error(404, "Archivo no disponible")
+                    return
+                with handle:
+                    # Inspect the opened descriptor to reduce rename/stat races.
+                    st = os.fstat(handle.fileno())
+                    size = st.st_size
+                    etag = strong_etag(st)
+                    # RFC 9110 applies Range to GET, not HEAD.
+                    requested_range = self.headers.get("Range", "").strip() if send_body else None
+                    if_range = self.headers.get("If-Range") if send_body else None
+                    try:
+                        selected = effective_range(requested_range, if_range, size, etag)
+                    except UnsatisfiableRange:
+                        self.send_response(416)
+                        self.send_header("Content-Range", f"bytes */{size}")
+                        self.send_header("Content-Length", "0")
+                        self.send_header("Connection", "close")
+                        self.end_headers()
+                        return
+                    start, end = selected if selected is not None else (0, size - 1)
+                    status = 206 if selected is not None else 200
+                    length = end - start + 1 if selected is not None else size
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("ETag", etag)
+                    self.send_header("Content-Length", str(length))
+                    if selected is not None:
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    with outer.lock:
+                        outer.requests += 1
+                    if not send_body or length <= 0:
+                        return
+                    remaining = length
+                    try:
+                        handle.seek(start)
                         while remaining:
-                            block = f.read(min(1024 * 1024, remaining))
+                            block = handle.read(min(1024 * 1024, remaining))
                             if not block:
                                 break
                             self.wfile.write(block)
                             remaining -= len(block)
                             with outer.lock:
                                 outer.bytes_served += len(block)
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    return
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
 
         class Server(http.server.ThreadingHTTPServer):
             daemon_threads = True
